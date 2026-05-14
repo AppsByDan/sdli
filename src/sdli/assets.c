@@ -1,0 +1,1 @@
+#include <sdli/assets.h>

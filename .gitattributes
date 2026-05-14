@@ -1,0 +1,18 @@
+# concert CRLF to LF on commits. stores LF in the repository.
+* text=auto
+
+*.h     text
+*.c     text
+*.cmake text
+*.py    text
+*.json  text
+
+*.txt text
+*.md  text
+*.cmake text
+
+*.plist.in text
+*.rc text
+
+src/strings.h linguist-generated
+src/strings.c linguist-generated
