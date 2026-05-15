@@ -82,6 +82,7 @@ add_library(${SDLI_LIB}
   "src/sdli/model/controller_list.c"
   "src/sdli/page/controller_list_page.c"
   "src/sdli/screen/home_screen.c"
+  $<$<PLATFORM_ID:Windows>:assets/assets.rc>
 )
 
 target_link_libraries(${SDLI_LIB} PUBLIC
@@ -100,9 +101,11 @@ target_include_directories(${SDLI_LIB} PUBLIC
 )
 
 target_compile_definitions(${SDLI_LIB} PUBLIC
-  -DSDLI_VERSION="${PROJECT_VERSION}"
+  SDLI_VERSION="${PROJECT_VERSION}"
   $<$<PLATFORM_ID:Windows>:UNICODE>
   $<$<PLATFORM_ID:Windows>:_UNICODE>
+  # for incbin to work with assets
+  "SDLI_ASSETS_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/assets/\""
 )
 
 set_target_properties(${SDLI_LIB} PROPERTIES OUTPUT_NAME "sdli")

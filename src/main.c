@@ -1,4 +1,5 @@
 #include <sdli/app.h>
+#include <sdli/assets.h>
 #include <sdli/util.h>
 
 #include <SDL3/SDL.h>
@@ -11,6 +12,8 @@
 int main(int argc, char** argv)
 {
   UNUSED(argc, argv);
+
+  LoadAssets();
 
   if (!App_Init()) {
     return 1;
