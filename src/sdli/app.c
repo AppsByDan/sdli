@@ -1,9 +1,12 @@
 #include <sdli/app.h>
 
+#include <sdli/vuid/vuid_sdl3.h>
+
 #include <assert.h>
 
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
+#include <vuid.h>
 
 //
 // private types
@@ -63,6 +66,21 @@ bool App_Init(void)
     goto error;
   }
 
+  const VConfig config = {
+      .gfx_context.user_data =
+          {
+              [V_SDL3_RENDERER_ID] = g_app.renderer,
+              [V_SDL3_TEXT_ENGINE_ID] = g_app.text_engine,
+          },
+  };
+
+  if (!v_init(&config)) {
+    goto error;
+  }
+
+  // TODO: temporary
+  vs_set_background(v_node_style(v_root()), v_rgb(30, 30, 30));
+
   SDL_ShowWindow(g_app.window);
   g_app.is_running = true;
 
@@ -75,6 +93,8 @@ error:
 
 void App_Shutdown(void)
 {
+  v_quit();
+
   if (g_app.text_engine) {
     TTF_DestroyRendererTextEngine(g_app.text_engine);
   }
@@ -103,6 +123,7 @@ bool App_ProcessEvents(void)
         g_app.is_running = false;
         break;
       default:
+        v_sdl3_handle_event(&event, g_app.renderer);
         break;
     }
   }
@@ -113,10 +134,15 @@ bool App_ProcessEvents(void)
 void App_Present(void)
 {
   SDL_Renderer* renderer = g_app.renderer;
+  int width = 0;
+  int height = 0;
 
-  SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-  SDL_RenderClear(renderer);
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+  SDL_GetWindowSize(g_app.window, &width, &height);
+  v_layout(width, height);
+
+  v_draw();
 
   SDL_RenderPresent(renderer);
 }

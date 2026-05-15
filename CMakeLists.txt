@@ -10,6 +10,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(SDLI_EXE sdli)
 set(SDLI_LIB sdli_lib)
+set(VUID_LIB vuid_lib)
 
 #
 # sdli specific build options
@@ -71,6 +72,16 @@ target_compile_options(sdli_base INTERFACE
 )
 
 #
+# vuid static library
+#
+
+add_library(${VUID_LIB}
+  "src3/vuid/vuid.c"
+)
+
+target_include_directories(${VUID_LIB} PUBLIC "src3/vuid")
+
+#
 # sdli static library
 #
 
@@ -82,6 +93,7 @@ add_library(${SDLI_LIB}
   "src/sdli/model/controller_list.c"
   "src/sdli/page/controller_list_page.c"
   "src/sdli/screen/home_screen.c"
+  "src/sdli/vuid/vuid_sdl3.c"
   $<$<PLATFORM_ID:Windows>:assets/assets.rc>
 )
 
@@ -90,6 +102,8 @@ target_link_libraries(${SDLI_LIB} PUBLIC
   SDL3_ttf::SDL3_ttf
   SDL3::SDL3
   sdli_base
+  ${VUID_LIB}
+  $<$<NOT:$<C_COMPILER_ID:MSVC>>:m>
 )
 
 if (NOT WIN32)
@@ -109,7 +123,6 @@ target_compile_definitions(${SDLI_LIB} PUBLIC
 )
 
 set_target_properties(${SDLI_LIB} PROPERTIES OUTPUT_NAME "sdli")
-target_link_libraries(${SDLI_LIB} PUBLIC $<$<NOT:$<C_COMPILER_ID:MSVC>>:m>)
 
 #
 # sdli executable
