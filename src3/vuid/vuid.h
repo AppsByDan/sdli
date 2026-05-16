@@ -878,7 +878,7 @@ void          v_gfx_set_clip(const VGfxContext* gfx, float x, float y, float w, 
 // clang-format on
 
 // clang-format off
-bool         v_itx_map_key(int virtual_key, int physical_key, int raw_modifiers, VKey* key_out, VKeyMod* modifiers_out);
+bool         v_itx_map_key(int virtual_key, int physical_key, int raw_modifiers, VKey* key_out, uint32_t* modifiers_out);
 VMouseButton v_itx_map_mouse_button(int button);
 // clang-format on
 

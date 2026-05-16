@@ -564,7 +564,7 @@ bool v_itx_map_key(int virtual_key,
                    int physical_key,
                    int raw_modifiers,
                    VKey* key_out,
-                   VKeyMod* modifiers_out)
+                   uint32_t* modifiers_out)
 {
   UNUSED(physical_key);
 

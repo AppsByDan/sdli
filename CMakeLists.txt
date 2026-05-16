@@ -94,7 +94,6 @@ add_library(${SDLI_LIB}
   "src/sdli/page/controller_list_page.c"
   "src/sdli/screen/home_screen.c"
   "src/sdli/vuid/vuid_sdl3.c"
-  $<$<PLATFORM_ID:Windows>:assets/assets.rc>
 )
 
 target_link_libraries(${SDLI_LIB} PUBLIC
@@ -130,6 +129,7 @@ set_target_properties(${SDLI_LIB} PROPERTIES OUTPUT_NAME "sdli")
 
 add_executable(${SDLI_EXE}
   "src/main.c"
+  $<$<PLATFORM_ID:Windows>:assets/assets.rc>
 )
 
 if (WIN32)
