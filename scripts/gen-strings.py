@@ -245,7 +245,7 @@ def main():
 
         f_c.write('const char* GetString(Locale locale, StringID id)\n')
         f_c.write('{\n')
-        f_c.write("  return g_strings[locale][id].data.str;\n")
+        f_c.write("  return g_strings[locale][id].str;\n")
         f_c.write("}\n\n")
 
         f_c.write('zsview GetStringView(Locale locale, StringID id)\n')
