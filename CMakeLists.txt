@@ -90,6 +90,7 @@ add_library(${SDLI_LIB}
   "src/sdli/assets.c"
   "src/sdli/strings.c"
   "src/sdli/style.c"
+  "src/sdli/util.c"
   "src/sdli/model/controller_list.c"
   "src/sdli/page/controller_list_page.c"
   "src/sdli/screen/home_screen.c"

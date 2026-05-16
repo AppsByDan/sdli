@@ -1,5 +1,6 @@
 #include <sdli/app.h>
 #include <sdli/assets.h>
+#include <sdli/screen/screen.h>
 #include <sdli/style.h>
 #include <sdli/util.h>
 
@@ -21,6 +22,10 @@ int main(int argc, char** argv)
   }
 
   LoadStyleSheet();
+
+  RegisterHomeScreen();
+
+  App_PushScreen(NULL, SCREENID_HOME);
 
   while (App_ProcessEvents()) {
     App_Present();
