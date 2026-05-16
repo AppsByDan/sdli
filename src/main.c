@@ -1,5 +1,6 @@
 #include <sdli/app.h>
 #include <sdli/assets.h>
+#include <sdli/style.h>
 #include <sdli/util.h>
 
 #include <SDL3/SDL.h>
@@ -18,6 +19,8 @@ int main(int argc, char** argv)
   if (!App_Init()) {
     return 1;
   }
+
+  LoadStyleSheet();
 
   while (App_ProcessEvents()) {
     App_Present();

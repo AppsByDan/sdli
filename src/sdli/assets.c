@@ -14,8 +14,8 @@
 // global state
 //
 
-ConstBlob SDLI_FONT_NORMAL = {0};
-ConstBlob SDLI_FONT_BOLD = {0};
+ConstBlob SDLI_TTF = {0};
+ConstBlob SDLI_TTF_BOLD = {0};
 
 //
 // function implementation
@@ -58,17 +58,17 @@ void LoadAssets(void)
 {
   HMODULE module = NULL;
 
-  SDLI_FONT_NORMAL = LoadCustomData(module, "SDLI_FONT_NORMAL");
-  SDLI_FONT_BOLD = LoadCustomData(module, "SDLI_FONT_BOLD");
+  SDLI_TTF = LoadCustomData(module, "SDLI_TTF");
+  SDLI_TTF_BOLD = LoadCustomData(module, "SDLI_TTF_BOLD");
 }
 #else
 // SDLI_ASSETS_PATH: absolute path to assets directory (CMakeLists.txt)
-INCBIN(FontNormal, SDLI_ASSETS_PATH "fonts/roboto-regular.ttf");
+INCBIN(Font, SDLI_ASSETS_PATH "fonts/roboto-regular.ttf");
 INCBIN(FontBold, SDLI_ASSETS_PATH "fonts/roboto-bold.ttf");
 
 void LoadAssets(void)
 {
-  SDLI_FONT_NORMAL = (ConstBlob){gFontNormalData, (size_t)(gFontNormalSize)};
-  SDLI_FONT_BOLD = (ConstBlob){gFontBoldData, (size_t)(gFontBoldSize)};
+  SDLI_TTF = (ConstBlob){gFontData, (size_t)(gFontSize)};
+  SDLI_TTF_BOLD = (ConstBlob){gFontBoldData, (size_t)(gFontBoldSize)};
 }
 #endif

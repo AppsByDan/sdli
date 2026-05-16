@@ -20,8 +20,8 @@ typedef struct ConstImageFileBlob {
   ImageFileType type;
 } ConstImageFileBlob;
 
-extern ConstBlob SDLI_FONT_NORMAL;
-extern ConstBlob SDLI_FONT_BOLD;
+extern ConstBlob SDLI_TTF;
+extern ConstBlob SDLI_TTF_BOLD;
 
 void LoadAssets(void);
 
