@@ -47,7 +47,8 @@ typedef enum StringID {
 // public functions
 //
 
-zsview GetString(Locale locale, StringID id);
+const char* GetString(Locale locale, StringID id);
+zsview      GetStringView(Locale locale, StringID id);
 
 #endif  // SDLI_STRINGS_H
 // clang-format on

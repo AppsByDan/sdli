@@ -25,7 +25,12 @@ const zsview g_strings[1][3] = {
 // public function implementations
 //
 
-zsview GetString(Locale locale, StringID id)
+const char* GetString(Locale locale, StringID id)
+{
+  return g_strings[locale][id].str;
+}
+
+zsview GetStringView(Locale locale, StringID id)
 {
   return g_strings[locale][id];
 }

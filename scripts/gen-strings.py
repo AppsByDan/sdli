@@ -205,7 +205,8 @@ def main():
         f_h.write("// public functions\n")
         f_h.write("//\n\n")
 
-        f_h.write("zsview GetString(Locale locale, StringID id);\n")
+        f_h.write("const char* GetString(Locale locale, StringID id);\n")
+        f_h.write("zsview      GetStringView(Locale locale, StringID id);\n")
         f_h.write("\n")
 
         f_h.write('#endif  // SDLI_STRINGS_H\n')
@@ -242,7 +243,12 @@ def main():
         f_c.write("// public function implementations\n")
         f_c.write("//\n\n")
 
-        f_c.write('zsview GetString(Locale locale, StringID id)\n')
+        f_c.write('const char* GetString(Locale locale, StringID id)\n')
+        f_c.write('{\n')
+        f_c.write("  return g_strings[locale][id].data.str;\n")
+        f_c.write("}\n\n")
+
+        f_c.write('zsview GetStringView(Locale locale, StringID id)\n')
         f_c.write('{\n')
         f_c.write("  return g_strings[locale][id];\n")
         f_c.write("}\n")
