@@ -2,7 +2,6 @@
 
 #include <assert.h>
 
-#include <sdli/style.h>
 #include <sdli/vuid/vuid_sdl3.h>
 
 #include <SDL3/SDL.h>
@@ -80,9 +79,6 @@ bool App_Init(void)
   if (!v_init(&config)) {
     goto error;
   }
-
-  // TODO: temporary
-  vs_set_background(v_node_style(v_root()), v_rgb(30, 30, 30));
 
   VNode* screen_layer = Box({
       .id = "screen_layer",

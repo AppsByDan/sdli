@@ -22,6 +22,7 @@ int main(int argc, char** argv)
   }
 
   LoadStyleSheet();
+  vs_set_background(v_node_style(v_root()), THEME_BACKGROUND_2);
 
   RegisterHomeScreen();
 

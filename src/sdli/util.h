@@ -16,6 +16,7 @@
 #define Box v_box
 #define Text v_txt
 #define Image v_img
+#define Children v_children
 
 //
 // types

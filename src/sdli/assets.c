@@ -16,6 +16,7 @@
 
 ConstBlob SDLI_TTF = {0};
 ConstBlob SDLI_TTF_BOLD = {0};
+ConstBlob SDLI_TTF_ICON = {0};
 
 //
 // function implementation
@@ -60,15 +61,18 @@ void LoadAssets(void)
 
   SDLI_TTF = LoadCustomData(module, "SDLI_TTF");
   SDLI_TTF_BOLD = LoadCustomData(module, "SDLI_TTF_BOLD");
+  SDLI_TTF_ICON = LoadCustomData(module, "SDLI_TTF_ICON");
 }
 #else
 // SDLI_ASSETS_PATH: absolute path to assets directory (CMakeLists.txt)
 INCBIN(Font, SDLI_ASSETS_PATH "fonts/roboto-regular.ttf");
 INCBIN(FontBold, SDLI_ASSETS_PATH "fonts/roboto-bold.ttf");
+INCBIN(FontIcon, SDLI_ASSETS_PATH "fonts/fontello.ttf");
 
 void LoadAssets(void)
 {
   SDLI_TTF = (ConstBlob){gFontData, (size_t)(gFontSize)};
   SDLI_TTF_BOLD = (ConstBlob){gFontBoldData, (size_t)(gFontBoldSize)};
+  SDLI_TTF_ICON = (ConstBlob){gFontIconData, (size_t)(gFontIconSize)};
 }
 #endif

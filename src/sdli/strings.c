@@ -13,11 +13,12 @@
 // global state
 //
 
-const zsview g_strings[1][3] = {
+const zsview g_strings[1][4] = {
   [LOCALE_EN_US] = {
     [SID_CONTROLLERS] = zv_init("Controllers"),
     [SID_LOCALE_DISPLAY_NAME] = zv_init("English"),
     [SID_LOCALE_TAG] = zv_init("en-US"),
+    [SID_SYSTEM] = zv_init("System"),
   },
 };
 

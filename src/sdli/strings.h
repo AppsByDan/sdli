@@ -40,6 +40,7 @@ typedef enum StringID {
   SID_CONTROLLERS,
   SID_LOCALE_DISPLAY_NAME,
   SID_LOCALE_TAG,
+  SID_SYSTEM,
   SID__COUNT,
 } StringID;
 

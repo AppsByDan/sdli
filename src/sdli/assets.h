@@ -22,6 +22,7 @@ typedef struct ConstImageFileBlob {
 
 extern ConstBlob SDLI_TTF;
 extern ConstBlob SDLI_TTF_BOLD;
+extern ConstBlob SDLI_TTF_ICON;
 
 void LoadAssets(void);
 
