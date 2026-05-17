@@ -1,3 +1,3 @@
-SDLI_FONT_NORMAL CUSTOMDATA "fonts/roboto-regular.ttf"
-SDLI_FONT_BOLD CUSTOMDATA "fonts/roboto-bold.ttf"
-SDLI_FONT_ICON CUSTOMDATA "fonts/fontello.ttf"
+SDLI_TTF CUSTOMDATA "fonts/roboto-regular.ttf"
+SDLI_TTF_BOLD CUSTOMDATA "fonts/roboto-bold.ttf"
+SDLI_TTF_ICON CUSTOMDATA "fonts/fontello.ttf"
