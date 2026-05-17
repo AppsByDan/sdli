@@ -1,5 +1,6 @@
 #include <sdli/app.h>
 #include <sdli/assets.h>
+#include <sdli/model/model.h>
 #include <sdli/screen/screen.h>
 #include <sdli/style.h>
 #include <sdli/util.h>
@@ -24,6 +25,9 @@ int main(int argc, char** argv)
   LoadStyleSheet();
   vs_set_background(v_node_style(v_root()), THEME_BACKGROUND_2);
 
+  SystemModel_Init();
+  ControllerListModel_Init();
+
   RegisterHomeScreen();
 
   App_PushScreen(NULL, SCREENID_HOME);
@@ -31,6 +35,9 @@ int main(int argc, char** argv)
   while (App_ProcessEvents()) {
     App_Present();
   }
+
+  ControllerListModel_Drop();
+  SystemModel_Drop();
 
   App_Shutdown();
 

@@ -1,6 +1,7 @@
 #include <sdli/app.h>
 
 #include <assert.h>
+#include <stdlib.h>
 
 #include <sdli/vuid/vuid_sdl3.h>
 
@@ -13,11 +14,40 @@
 // private types
 //
 
+typedef struct EventGroupListener {
+  EventListener listener;
+  void* user_data;
+} EventGroupListener;
+
+#define i_implement
+#define i_no_clone
+#define i_no_emplace
+#define i_key EventGroupListener
+#define i_type event_group_listeners
+#include <stc/vec.h>
+
+typedef struct EventGroup {
+  event_group_listeners listeners;
+  int dispatch_depth;
+  bool needs_compaction;
+} EventGroup;
+
+static void EventGroup_drop(EventGroup* group);
+
+#define i_implement
+#define i_no_clone
+#define i_no_emplace
+#define i_key int
+#define i_valclass EventGroup
+#define i_type event_map
+#include <stc/hmap.h>
+
 typedef struct App {
   SDL_Window* window;
   SDL_Renderer* renderer;
   TTF_TextEngine* text_engine;
   Navigator screen_navigator;
+  event_map event_listeners;
   bool is_running;
 } App;
 
@@ -28,6 +58,7 @@ typedef struct App {
 static SDL_Window* SCreateWindow(const char* title, int width, int height);
 static SDL_Renderer* SCreateRenderer(SDL_Window* window);
 static TTF_TextEngine* SCreateTextEngine(SDL_Renderer* renderer);
+static void DispatchEvent(int event_type, void* event_data);
 
 //
 // global state
@@ -129,6 +160,8 @@ bool App_ProcessEvents(void)
 {
   SDL_Event event;
 
+  DispatchEvent(EVT_BEFORE_PROCESS_EVENTS, NULL);
+
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
       case SDL_EVENT_QUIT:
@@ -136,9 +169,14 @@ bool App_ProcessEvents(void)
         break;
       default:
         v_sdl3_handle_event(&event, g_app.renderer);
+        if (event.type < UINT32_MAX) {
+          DispatchEvent((int)event.type, &event);
+        }
         break;
     }
   }
+
+  DispatchEvent(EVT_AFTER_PROCESS_EVENTS, NULL);
 
   return g_app.is_running;
 }
@@ -175,6 +213,62 @@ void App_PushScreen(const char* from, const char* to)
 void App_PopScreen(const char* from)
 {
   Navigator_Pop(&g_app.screen_navigator, from);
+}
+
+void App_AddEventListener(int event_type,
+                          EventListener listener,
+                          void* user_data)
+{
+  event_map* map = &g_app.event_listeners;
+  event_map_value* group = event_map_get_mut(map, event_type);
+
+  if (!group) {
+    EventGroup new_group = {.listeners =
+                                event_group_listeners_with_capacity(8)};
+    event_map_result insert_result =
+        event_map_insert(map, event_type, new_group);
+
+    if (!insert_result.inserted) {
+      // TODO: better error handling
+      abort();
+    }
+
+    group = insert_result.ref;
+  }
+
+  EventGroupListener egl = {.listener = listener, .user_data = user_data};
+
+  event_group_listeners_push_back(&group->second.listeners, egl);
+}
+
+void App_RemoveEventListener(int event_type, EventListener listener)
+{
+  if (listener == NULL) {
+    return;
+  }
+
+  event_map* map = &g_app.event_listeners;
+  event_map_value* group = event_map_get_mut(map, event_type);
+
+  if (!group) {
+    return;
+  }
+
+  const isize len = event_group_listeners_size(&group->second.listeners);
+
+  for (isize i = 0; i < len; i++) {
+    EventGroupListener* egl =
+        event_group_listeners_at_mut(&group->second.listeners, i);
+    if (egl->listener == listener) {
+      if (group->second.dispatch_depth > 0) {
+        egl->listener = NULL;
+        group->second.needs_compaction = true;
+      } else {
+        event_group_listeners_erase_n(&group->second.listeners, i, 1);
+      }
+      break;
+    }
+  }
 }
 
 //
@@ -242,4 +336,50 @@ static TTF_TextEngine* SCreateTextEngine(SDL_Renderer* renderer)
   }
 
   return text_engine;
+}
+
+static void EventGroup_drop(EventGroup* group)
+{
+  event_group_listeners_drop(&group->listeners);
+}
+
+// Dispatch an event to all listeners of the given type.
+// - removals are safe during dispatch
+// - adds are safe during dispatch, but if a new listeners is added during
+//   dispatch, it will not be called until the next time the event is dispatched
+static void DispatchEvent(int event_type, void* event_data)
+{
+  event_map* map = &g_app.event_listeners;
+  event_map_value* group = event_map_get_mut(map, event_type);
+
+  if (!group) {
+    return;
+  }
+
+  const isize len = event_group_listeners_size(&group->second.listeners);
+
+  group->second.dispatch_depth++;
+  for (isize i = 0; i < len; i++) {
+    EventGroupListener* egl =
+        event_group_listeners_at_mut(&group->second.listeners, i);
+    if (egl->listener) {
+      egl->listener(event_type, event_data, egl->user_data);
+    }
+  }
+  group->second.dispatch_depth--;
+
+  if (group->second.dispatch_depth == 0 && group->second.needs_compaction) {
+    const isize latest_len =
+        event_group_listeners_size(&group->second.listeners);
+
+    for (isize i = latest_len - 1; i >= 0; --i) {
+      const EventGroupListener* egl =
+          event_group_listeners_at(&group->second.listeners, i);
+      if (!egl->listener) {
+        event_group_listeners_erase_n(&group->second.listeners, i, 1);
+      }
+    }
+
+    group->second.needs_compaction = false;
+  }
 }

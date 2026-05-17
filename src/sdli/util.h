@@ -67,4 +67,10 @@ void Navigator_Push(Navigator* navigator, const char* from, const char* to);
 // from is a guard preventing popping the same navigable multiple times.
 void Navigator_Pop(Navigator* navigator, const char* from);
 
+// Helper to deal with SDL functions that return a NULL cstring.
+static inline const char* EnsureString(const char* str, const char* default_str)
+{
+  return str ? str : default_str;
+}
+
 #endif  // SDLI_UTIL_H
