@@ -19,6 +19,7 @@
 #define THEME_BACKGROUND_2 ((VColor){0x17, 0x1D, 0x25, 0xFF})
 #define THEME_TEXT_COLOR ((VColor){0xB8, 0xBC, 0xBF, 0xFF})
 #define THEME_TEXT_HIGHLIGHT_COLOR ((VColor){0xFF, 0xFF, 0xFF, 0xFF})
+#define THEME_SCROLLBAR_COLOR ((VColor){0x44, 0x44, 0x44, 0xFF})
 
 #define THEME_SP_2XS (5)
 #define THEME_SP_XS (8)
@@ -28,6 +29,7 @@
 
 #define THEME_BORDER (1)
 #define THEME_BUTTON_CORNER_RADIUS (4)
+#define THEME_SCROLLBAR_WIDTH (14)
 
 #define CLS_FILL "fill"
 #define CLS_TEXT "text"
@@ -42,6 +44,7 @@
 #define CLS_LIST_ITEM_LAST "li-last"
 #define CLS_LIST_ITEM_KEY_TEXT "li-key-text"
 #define CLS_LIST_ITEM_VALUE_TEXT "li-value-text"
+#define CLS_SCROLLABLE_LIST "slist"
 
 //
 // public functions
