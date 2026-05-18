@@ -5113,30 +5113,33 @@ VStyle* vss__start_class(const char* name, const char* base) {
   VStyleClassHashSet* style_classes = &v_ctx()->style_classes_by_id;
   VStyleClass* existing_class =
       v_style_class_hset_get(style_classes, &(VStyleClassHashSetKey){name});
+  VStyle* style;
 
   if (existing_class) {
     existing_class->is_ready = false;
     v_style_reset(existing_class->style);
-    return existing_class->style;
-  }
+    style = existing_class->style;
+  } else {
+    VStyleClass new_style_class;
 
-  VStyleClass style_class;
+    if (!v_style_class_init(name, &new_style_class)) {
+      return NULL;
+    }
 
-  if (!v_style_class_init(name, &style_class)) {
-    return NULL;
-  }
+    if (!v_style_class_hset_put(style_classes, new_style_class)) {
+      return NULL;
+    }
 
-  if (!v_style_class_hset_put(style_classes, style_class)) {
-    return NULL;
+    style = new_style_class.style;
   }
 
   VStyle* base_style = base ? vss_get_class(base) : NULL;
 
   if (base_style) {
-    v_style__flatten(style_class.style, base_style);
+    v_style__flatten(style, base_style);
   }
 
-  return style_class.style;
+  return style;
 }
 
 void vss__end_class(const char* name) {
