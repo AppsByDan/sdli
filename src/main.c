@@ -4,6 +4,7 @@
 #include <sdli/screen/screen.h>
 #include <sdli/style.h>
 #include <sdli/util.h>
+#include <sdli/widget/widget.h>
 
 #include <SDL3/SDL.h>
 
@@ -16,21 +17,22 @@ int main(int argc, char** argv)
 {
   UNUSED(argc, argv);
 
-  LoadAssets();
-
   if (!App_Init()) {
     return 1;
   }
 
-  LoadStyleSheet();
-  vs_set_background(v_node_style(v_root()), THEME_BACKGROUND_2);
-
   SystemModel_Init();
   ControllerListModel_Init();
 
-  RegisterHomeScreen();
+  LoadAssets();
+  LoadStyleSheet();
 
-  App_PushScreen(NULL, SCREENID_HOME);
+  v_node_style_assign_class(v_root(), CLS_ROOT);
+
+  VNode* screen_navigator = ScreenNavigator();
+  v_node_append_child(v_root(), screen_navigator);
+
+  Navigator_Goto(screen_navigator, SCREENID_HOME);
 
   while (App_ProcessEvents()) {
     App_Present();

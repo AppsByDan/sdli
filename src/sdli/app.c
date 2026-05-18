@@ -1,13 +1,12 @@
 #include <sdli/app.h>
 
-#include <assert.h>
 #include <stdlib.h>
 
+#include <sdli/util.h>
 #include <sdli/vuid/vuid_sdl3.h>
 
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
-#include <vuid.h>
 #include <stc/common.h>
 
 //
@@ -46,7 +45,6 @@ typedef struct App {
   SDL_Window* window;
   SDL_Renderer* renderer;
   TTF_TextEngine* text_engine;
-  Navigator screen_navigator;
   event_map event_listeners;
   bool is_running;
 } App;
@@ -111,17 +109,6 @@ bool App_Init(void)
     goto error;
   }
 
-  VNode* screen_layer = Box({
-      .id = "screen_layer",
-  });
-  VStyle* screen_layer_style = v_node_style(screen_layer);
-
-  vs_set_width(screen_layer_style, V_GROW());
-  vs_set_height(screen_layer_style, V_GROW());
-
-  v_node_append_child(v_root(), screen_layer);
-  Navigator_Init(&g_app.screen_navigator, "screen_layer");
-
   SDL_ShowWindow(g_app.window);
   g_app.is_running = true;
 
@@ -134,8 +121,6 @@ error:
 
 void App_Shutdown(void)
 {
-  Navigator_Drop(&g_app.screen_navigator);
-
   v_quit();
 
   if (g_app.text_engine) {
@@ -195,24 +180,6 @@ void App_Present(void)
   v_draw();
 
   SDL_RenderPresent(renderer);
-}
-
-void App_RegisterScreen(const char* id,
-                        NavigableCreate create,
-                        NavigableEnter enter,
-                        NavigableLeave leave)
-{
-  Navigator_Register(&g_app.screen_navigator, id, create, enter, leave);
-}
-
-void App_PushScreen(const char* from, const char* to)
-{
-  Navigator_Push(&g_app.screen_navigator, from, to);
-}
-
-void App_PopScreen(const char* from)
-{
-  Navigator_Pop(&g_app.screen_navigator, from);
 }
 
 void App_AddEventListener(int event_type,

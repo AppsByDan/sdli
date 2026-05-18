@@ -1,13 +1,12 @@
 #include <sdli/page/page.h>
 
-#include <sdli/strings.h>
 #include <sdli/style.h>
 #include <sdli/util.h>
 #include <sdli/widget/widget.h>
 
 static void OnNavigatorEvent(NavigatorEvent* event);
 
-VNode* ControllerListPage(void)
+VNode* SystemPage(void)
 {
   // clang-format off
   VNode* page = Box({
@@ -15,7 +14,7 @@ VNode* ControllerListPage(void)
     Children(
       Text({
         .sclass = CLS_TEXT,
-        .content.text = GetString(LOCALE_EN_US, SID_CONTROLLERS)
+        .content.text = "System"
       })
     )
   });

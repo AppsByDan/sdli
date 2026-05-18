@@ -5,6 +5,7 @@
 #include <sdli/strings.h>
 #include <sdli/style.h>
 #include <sdli/util.h>
+#include <sdli/widget/widget.h>
 
 //
 // private types
@@ -20,13 +21,11 @@ typedef struct HomeButtonData {
 // private function declarations
 //
 
-static VNode* Create(const char* id);
-static void Enter(VNode* node, NavigationDirection direction);
-static void Leave(VNode* node, NavigationDirection direction);
 static void StyleSheet(void);
 static VNode* HomeButton(const HomeButtonData* data);
-void HomeButton_OnClick(VNode* node, VEvent* event);
-void HomeButton_OnMouseOver(VNode* node, VEvent* event);
+static void HomeButton_OnClick(VNode* node, VEvent* event);
+static void HomeButton_OnMouseOver(VNode* node, VEvent* event);
+static void OnNavigatorEvent(NavigatorEvent* event);
 
 //
 // constants
@@ -51,22 +50,13 @@ static const HomeButtonData HOME_BUTTONS[] = {
 // public function implementation
 //
 
-void RegisterHomeScreen(void)
-{
-  App_RegisterScreen(SCREENID_HOME, &Create, &Enter, &Leave);
-}
-
-//
-// private function implementation
-//
-
-static VNode* Create(const char* id)
+VNode* HomeScreen(void)
 {
   StyleSheet();
 
   // clang-format off
   VNode* home_screen = Box({
-    .id = id,
+    .id = SCREENID_HOME,
     .sclass = CLS_FILL,
     Children(
       Box({
@@ -81,23 +71,25 @@ static VNode* Create(const char* id)
   });
   // clang-format on
 
-  VNode* home_left_column = v_node_first_child(home_screen);
+  VNode* left_column = v_node_child_at(home_screen, 0);
 
   for (size_t i = 0; i < c_arraylen(HOME_BUTTONS); ++i) {
-    v_node_append_child(home_left_column, HomeButton(&HOME_BUTTONS[i]));
+    v_node_append_child(left_column, HomeButton(&HOME_BUTTONS[i]));
   }
 
-  return home_screen;
+  VNode* right_column = v_node_child_at(home_screen, 1);
+
+  PageNavigator_Init(right_column);
+
+  return Navigable_Init(home_screen, &OnNavigatorEvent);
 }
 
-static void Enter(VNode* node, NavigationDirection direction)
+static void OnNavigatorEvent(NavigatorEvent* event)
 {
-  UNUSED(node, direction);
-}
-
-static void Leave(VNode* node, NavigationDirection direction)
-{
-  UNUSED(node, direction);
+  if (event->type == NAVIGATOR_EVENT_ENTER) {
+    VNode* page_navigator = v_get_node_by_id("home_right_column");
+    Navigator_Goto(page_navigator, PAGEID_CONTROLLER_LIST);
+  }
 }
 
 static void StyleSheet(void)
@@ -188,12 +180,17 @@ static VNode* HomeButton(const HomeButtonData* data)
   // clang-format on
 }
 
-void HomeButton_OnClick(VNode* node, VEvent* event)
+static void HomeButton_OnClick(VNode* node, VEvent* event)
 {
-  UNUSED(node, event);
+  UNUSED(event);
+  const char* page_id = v_node_data(node);
+  assert(page_id);
+
+  VNode* page_navigator = v_get_node_by_id("home_right_column");
+  Navigator_Goto(page_navigator, page_id);
 }
 
-void HomeButton_OnMouseOver(VNode* node, VEvent* event)
+static void HomeButton_OnMouseOver(VNode* node, VEvent* event)
 {
   VNode* icon_box = v_node_child_at(node, 0);
   VNode* label = v_node_child_at(node, 1);

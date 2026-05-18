@@ -1,6 +1,8 @@
 #ifndef SDLI_SCREEN_H
 #define SDLI_SCREEN_H
 
+#include <vuid.h>
+
 //
 // macros & constants
 //
@@ -11,6 +13,6 @@
 // public functions
 //
 
-void RegisterHomeScreen(void);
+VNode* ScreenNavigator(void);
 
 #endif  // SDLI_SCREEN_H

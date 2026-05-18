@@ -1,6 +1,7 @@
 #include "model.h"
 
 #include <sdli/app.h>
+#include <sdli/util.h>
 
 #include <SDL3/SDL.h>
 #include <stc/cstr.h>

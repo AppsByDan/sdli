@@ -26,6 +26,8 @@
 #define CLS_FILL "fill"
 #define CLS_TEXT "text"
 #define CLS_ICON "icon"
+#define CLS_ROOT "root"
+#define CLS_CENTER_XY "center_xy"
 
 //
 // public functions

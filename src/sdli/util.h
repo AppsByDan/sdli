@@ -1,6 +1,9 @@
 #ifndef SDLI_UTIL_H
 #define SDLI_UTIL_H
 
+#include <assert.h>
+#include <string.h>
+
 #include <vuid.h>
 
 //
@@ -19,58 +22,23 @@
 #define Children v_children
 
 //
-// types
-//
-
-// Navigator transition direction.
-typedef enum NavigationDirection {
-  NAV_FORWARD,
-  NAV_BACKWARD,
-} NavigationDirection;
-
-typedef VNode* (*NavigableCreate)(const char*);
-typedef void (*NavigableEnter)(VNode*, NavigationDirection);
-typedef void (*NavigableLeave)(VNode*, NavigationDirection);
-
-// Registration metadata for a Page or Screen node.
-typedef struct Navigable {
-  const char* id;
-  NavigableCreate create;
-  NavigableEnter enter;
-  NavigableLeave leave;
-} Navigable;
-
-// A simple navigator that manages a stack of navigables (e.g. pages or screens)
-// within a container node. The navigator supports transition directions,
-// forward and backward, which can be used for the navigable to setup and
-// cleanup and, in the future, support transition animations. Navigables must be
-// registered with the navigator before they can be pushed to the stack.
-typedef struct Navigator {
-  const char* container_id;
-  Navigable navigables[16];
-  size_t navigables_size;
-} Navigator;
-
-//
 // public functions
 //
-
-void Navigator_Init(Navigator* navigator, const char* container_id);
-void Navigator_Drop(Navigator* navigator);
-void Navigator_Register(Navigator* navigator,
-                        const char* id,
-                        NavigableCreate create,
-                        NavigableEnter enter,
-                        NavigableLeave leave);
-// from is a guard preventing pushing the same navigable multiple times.
-void Navigator_Push(Navigator* navigator, const char* from, const char* to);
-// from is a guard preventing popping the same navigable multiple times.
-void Navigator_Pop(Navigator* navigator, const char* from);
 
 // Helper to deal with SDL functions that return a NULL cstring.
 static inline const char* EnsureString(const char* str, const char* default_str)
 {
   return str ? str : default_str;
+}
+
+static inline bool StringEq(const char* a, const char* b)
+{
+  return a == b || strcmp(a, b) == 0;
+}
+
+static inline bool NodeIdEq(VNode* node, const char* id)
+{
+  return strcmp(v_node_id(node), id) == 0;
 }
 
 #endif  // SDLI_UTIL_H

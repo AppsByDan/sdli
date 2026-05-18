@@ -94,8 +94,12 @@ add_library(${SDLI_LIB}
   "src/sdli/model/controller_list_model.c"
   "src/sdli/model/system_model.c"
   "src/sdli/page/controller_list_page.c"
+  "src/sdli/page/page.c"
+  "src/sdli/page/system_page.c"
   "src/sdli/screen/home_screen.c"
+  "src/sdli/screen/screen.c"
   "src/sdli/vuid/vuid_sdl3.c"
+  "src/sdli/widget/navigator.c"
 )
 
 target_link_libraries(${SDLI_LIB} PUBLIC
