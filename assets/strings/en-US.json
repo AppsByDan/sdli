@@ -1,6 +1,18 @@
 {
+  "BATTERY": "Battery",
+  "CACHE_LINE_SIZE": "Cache Line Size",
+  "CAP_HARDWARE": "HARDWARE",
+  "CAP_OS": "OS",
+  "CAP_SDL": "SDL",
+  "CONTROLLERS": "Controllers",
+  "CPU_CORES": "CPU Cores",
   "LOCALE_DISPLAY_NAME": "English",
   "LOCALE_TAG": "en-US",
-  "CONTROLLERS": "Controllers",
-  "SYSTEM": "System"
+  "PLATFORM": "Platform",
+  "POWER_STATE": "Power State",
+  "REVISION": "Revision",
+  "SYSTEM": "System",
+  "SYSTEM_RAM": "System RAM",
+  "THEME": "Theme",
+  "VERSION": "Version"
 }

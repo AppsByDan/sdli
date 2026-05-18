@@ -5,7 +5,15 @@
 #include <sdli/util.h>
 #include <sdli/widget/widget.h>
 
+//
+// private function declarations
+//
+
 static void OnNavigatorEvent(NavigatorEvent* event);
+
+//
+// public function implementation
+//
 
 VNode* ControllerListPage(void)
 {
@@ -15,7 +23,7 @@ VNode* ControllerListPage(void)
     Children(
       Text({
         .sclass = CLS_TEXT,
-        .content.text = GetString(LOCALE_EN_US, SID_CONTROLLERS)
+        .content.text = STR(SID_CONTROLLERS)
       })
     )
   });
@@ -23,6 +31,10 @@ VNode* ControllerListPage(void)
 
   return Navigable_Init(page, &OnNavigatorEvent);
 }
+
+//
+// private function implementation
+//
 
 static void OnNavigatorEvent(NavigatorEvent* event)
 {

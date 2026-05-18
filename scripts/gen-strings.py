@@ -207,6 +207,8 @@ def main():
 
         f_h.write("const char* GetString(Locale locale, StringID id);\n")
         f_h.write("zsview      GetStringView(Locale locale, StringID id);\n")
+        f_h.write("// TODO: put this in the app?\n")
+        f_h.write("#define STR(SID) GetString(LOCALE_EN_US, SID)\n")
         f_h.write("\n")
 
         f_h.write('#endif  // SDLI_STRINGS_H\n')

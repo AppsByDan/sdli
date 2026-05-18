@@ -13,12 +13,24 @@
 // global state
 //
 
-const zsview g_strings[1][4] = {
+const zsview g_strings[1][16] = {
   [LOCALE_EN_US] = {
+    [SID_BATTERY] = zv_init("Battery"),
+    [SID_CACHE_LINE_SIZE] = zv_init("Cache Line Size"),
+    [SID_CAP_HARDWARE] = zv_init("HARDWARE"),
+    [SID_CAP_OS] = zv_init("OS"),
+    [SID_CAP_SDL] = zv_init("SDL"),
     [SID_CONTROLLERS] = zv_init("Controllers"),
+    [SID_CPU_CORES] = zv_init("CPU Cores"),
     [SID_LOCALE_DISPLAY_NAME] = zv_init("English"),
     [SID_LOCALE_TAG] = zv_init("en-US"),
+    [SID_PLATFORM] = zv_init("Platform"),
+    [SID_POWER_STATE] = zv_init("Power State"),
+    [SID_REVISION] = zv_init("Revision"),
     [SID_SYSTEM] = zv_init("System"),
+    [SID_SYSTEM_RAM] = zv_init("System RAM"),
+    [SID_THEME] = zv_init("Theme"),
+    [SID_VERSION] = zv_init("Version"),
   },
 };
 

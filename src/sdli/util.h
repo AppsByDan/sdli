@@ -25,6 +25,9 @@
 // public functions
 //
 
+void BindString(const char* id, const char* value);
+void BindInt(const char* id, int value);
+
 // Helper to deal with SDL functions that return a NULL cstring.
 static inline const char* EnsureString(const char* str, const char* default_str)
 {

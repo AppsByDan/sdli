@@ -36,4 +36,8 @@ void Navigator_Goto(VNode* navigator, const char* to);
 
 VNode* Navigable_Init(VNode* node, OnNavigatorEventFn on_event);
 
+VNode* KeyValueListItem(const char* key_name,
+                        const char* value_id,
+                        bool is_last);
+
 #endif  // SDLI_WIDGET_H

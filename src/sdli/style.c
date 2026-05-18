@@ -45,4 +45,78 @@ void LoadStyleSheet(void)
     vs_set_xalign(S, V_ALIGN_X_CENTER);
     vs_set_yalign(S, V_ALIGN_Y_CENTER);
   }
+
+  vss_with(S, CLS_PAGE)
+  {
+    vs_set_width(S, V_GROW());
+    vs_set_height(S, V_FIXED(720));  // TODO: review
+    vs_set_direction(S, V_DIRECTION_COLUMN);
+    vs_set_padding(S, THEME_SP_MD, THEME_SP_MD, THEME_SP_MD, THEME_SP_MD);
+  }
+
+  vss_with(S, CLS_PAGE_H1)
+  {
+    vs_set_color(S, THEME_TEXT_HIGHLIGHT_COLOR);
+    vs_set_font(S, FONT_BOLD);
+    vs_set_font_size(S, THEME_TEXT_FONT_SIZE_LG);
+    vs_set_width(S, V_GROW());
+    vs_set_direction(S, V_DIRECTION_COLUMN);
+    vs_set_padding_bottom(S, THEME_SP_MD);
+  }
+
+  vss_with(S, CLS_PAGE_H2)
+  {
+    vs_set_font(S, FONT_BOLD);
+    vs_set_font_size(S, THEME_TEXT_FONT_SIZE);
+    vs_set_color(S, THEME_TEXT_HIGHLIGHT_COLOR);
+    vs_set_width(S, V_GROW());
+    vs_set_padding(S, THEME_SP_MD, 0, 6, THEME_SP_MD + 1);
+  }
+
+  vss_with(S, CLS_LIST)
+  {
+    vs_set_direction(S, V_DIRECTION_COLUMN);
+    vs_set_padding(S, THEME_SP_MD, THEME_SP_MD, THEME_SP_MD, THEME_SP_MD);
+    vs_set_width(S, V_GROW());
+    vs_set_border_radius(S, THEME_BUTTON_CORNER_RADIUS);
+    vs_set_border_top(S, THEME_BORDER);
+    vs_set_border_bottom(S, THEME_BORDER);
+    vs_set_border_right(S, THEME_BORDER);
+    vs_set_border_left(S, THEME_BORDER);
+    vs_set_border_color(S, v_rgb(0x44, 0x44, 0x44));
+  }
+
+  vss_with(S, CLS_LIST_ITEM)
+  {
+    vs_set_direction(S, V_DIRECTION_ROW);
+    vs_set_width(S, V_GROW());
+    vs_set_padding_top(S, THEME_SP_SM);
+    vs_set_padding_bottom(S, THEME_SP_SM);
+    vs_set_border_bottom(S, THEME_BORDER);
+    vs_set_border_color(S, v_rgb(0x44, 0x44, 0x44));
+  }
+
+  vss_with(S, CLS_LIST_ITEM_LAST)
+  {
+    vs_set_direction(S, V_DIRECTION_ROW);
+    vs_set_width(S, V_GROW());
+    vs_set_padding_top(S, THEME_SP_SM);
+    vs_set_padding_bottom(S, THEME_SP_SM);
+  }
+
+  vss_with(S, CLS_LIST_ITEM_KEY_TEXT)
+  {
+    vs_set_font(S, FONT_NORMAL);
+    vs_set_font_size(S, THEME_TEXT_FONT_SIZE);
+    vs_set_color(S, THEME_TEXT_HIGHLIGHT_COLOR);
+    vs_set_width(S, V_GROW());
+  }
+
+  vss_with(S, CLS_LIST_ITEM_VALUE_TEXT)
+  {
+    vs_set_font(S, FONT_NORMAL);
+    vs_set_font_size(S, THEME_TEXT_FONT_SIZE);
+    vs_set_color(S, THEME_TEXT_HIGHLIGHT_COLOR);
+    vs_set_width(S, V_FIT());
+  }
 }

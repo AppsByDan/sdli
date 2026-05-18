@@ -37,10 +37,22 @@ typedef enum Locale {
 } Locale;
 
 typedef enum StringID {
+  SID_BATTERY,
+  SID_CACHE_LINE_SIZE,
+  SID_CAP_HARDWARE,
+  SID_CAP_OS,
+  SID_CAP_SDL,
   SID_CONTROLLERS,
+  SID_CPU_CORES,
   SID_LOCALE_DISPLAY_NAME,
   SID_LOCALE_TAG,
+  SID_PLATFORM,
+  SID_POWER_STATE,
+  SID_REVISION,
   SID_SYSTEM,
+  SID_SYSTEM_RAM,
+  SID_THEME,
+  SID_VERSION,
   SID__COUNT,
 } StringID;
 
@@ -50,6 +62,8 @@ typedef enum StringID {
 
 const char* GetString(Locale locale, StringID id);
 zsview      GetStringView(Locale locale, StringID id);
+// TODO: put this in the app?
+#define STR(SID) GetString(LOCALE_EN_US, SID)
 
 #endif  // SDLI_STRINGS_H
 // clang-format on
