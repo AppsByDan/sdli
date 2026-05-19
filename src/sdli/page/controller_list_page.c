@@ -1,6 +1,7 @@
 #include "page.h"
 
 #include <sdli/model/model.h>
+#include <sdli/screen/screen.h>
 #include <sdli/strings.h>
 #include <sdli/style.h>
 #include <sdli/util.h>
@@ -92,9 +93,11 @@ static void InfoButtonOnClick(VNode* node, VEvent* event)
 static void EventsButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(node, event);
+  ScreenNavigator_Goto(SCREENID_CONTROLLER_EVENTS);
 }
 
 static void ConfigureButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(node, event);
+  ScreenNavigator_Goto(SCREENID_CONTROLLER_CONFIG);
 }

@@ -96,6 +96,8 @@ add_library(${SDLI_LIB}
   "src/sdli/page/controller_list_page.c"
   "src/sdli/page/page.c"
   "src/sdli/page/system_page.c"
+  "src/sdli/screen/controller_config_screen.c"
+  "src/sdli/screen/controller_events_screen.c"
   "src/sdli/screen/home_screen.c"
   "src/sdli/screen/screen.c"
   "src/sdli/vuid/vuid_sdl3.c"
