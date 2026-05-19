@@ -10,6 +10,11 @@
 
 typedef uint32_t ControllerId;
 
+typedef struct ControllerProperty {
+  const char* name;
+  bool value;
+} ControllerProperty;
+
 /*
  * SystemModel exposes system and platform information from SDL.
  */
@@ -60,5 +65,8 @@ int Controller_GetHatCount(ControllerId id);
 int Controller_GetBallCount(ControllerId id);
 int Controller_GetTouchpadCount(ControllerId id);
 uint64_t Controller_GetSteamHandle(ControllerId id);
+const ControllerProperty* Controller_GetProperties(ControllerId id,
+                                                   int* out_count);
+const char** Controller_GetPropertyNames(int* out_count);
 
 #endif  // SDLI_MODEL_H

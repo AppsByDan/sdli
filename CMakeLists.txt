@@ -93,6 +93,7 @@ add_library(${SDLI_LIB}
   "src/sdli/util.c"
   "src/sdli/model/controller_list_model.c"
   "src/sdli/model/system_model.c"
+  "src/sdli/page/controller_info_page.c"
   "src/sdli/page/controller_list_page.c"
   "src/sdli/page/page.c"
   "src/sdli/page/system_page.c"

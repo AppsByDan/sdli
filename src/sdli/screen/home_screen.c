@@ -54,32 +54,28 @@ VNode* HomeScreen(void)
 {
   StyleSheet();
 
+  VNode* left_column;
+  VNode* right_column;
   // clang-format off
   VNode* home_screen = Box({
     .id = SCREENID_HOME,
     .sclass = CLS_FILL,
     Children(
-      Box({
-        .id = "home_left_column",
+      left_column = Box({
         .sclass = CLS_HOME_LEFT_COLUMN,
       }),
-      Box({
-        .id = "home_right_column",
+      right_column = Box({
         .sclass = CLS_HOME_RIGHT_COLUMN,
       })
     )
   });
   // clang-format on
 
-  VNode* left_column = v_node_child_at(home_screen, 0);
+  PageNavigator_Init(right_column);
 
   for (size_t i = 0; i < c_arraylen(HOME_BUTTONS); ++i) {
     v_node_append_child(left_column, HomeButton(&HOME_BUTTONS[i]));
   }
-
-  VNode* right_column = v_node_child_at(home_screen, 1);
-
-  PageNavigator_Init(right_column);
 
   return Navigable_Init(home_screen, &OnNavigatorEvent);
 }
@@ -87,8 +83,7 @@ VNode* HomeScreen(void)
 static void OnNavigatorEvent(NavigatorEvent* event)
 {
   if (event->type == NAVIGATOR_EVENT_ENTER) {
-    VNode* page_navigator = v_get_node_by_id("home_right_column");
-    Navigator_Goto(page_navigator, PAGEID_CONTROLLER_LIST);
+    PageNavigator_Goto(PAGEID_CONTROLLER_LIST);
   }
 }
 
@@ -186,8 +181,7 @@ static void HomeButton_OnClick(VNode* node, VEvent* event)
   const char* page_id = v_node_data(node);
   assert(page_id);
 
-  VNode* page_navigator = v_get_node_by_id("home_right_column");
-  Navigator_Goto(page_navigator, page_id);
+  PageNavigator_Goto(page_id);
 }
 
 static void HomeButton_OnMouseOver(VNode* node, VEvent* event)

@@ -56,6 +56,8 @@ static void OnNavigatorEvent(NavigatorEvent* event)
     ControllerId* controller_ids =
         ControllerListModel_SortControllers(&controller_count);
 
+    // TODO: show message for no controllers
+
     for (int i = 0; i < controller_count; ++i) {
       // TODO: create a proper controller list item widget
       ControllerId id = controller_ids[i];
@@ -88,6 +90,7 @@ static void OnNavigatorEvent(NavigatorEvent* event)
 static void InfoButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(node, event);
+  PageNavigator_Goto(PAGEID_CONTROLLER_INFO);
 }
 
 static void EventsButtonOnClick(VNode* node, VEvent* event)

@@ -36,9 +36,8 @@ void Navigator_Goto(VNode* navigator, const char* to);
 
 VNode* Navigable_Init(VNode* node, OnNavigatorEventFn on_event);
 
-VNode* KeyValueListItem(const char* key_name,
-                        const char* value_id,
-                        bool is_last);
+VNode* KeyValueListItem(const char* key_name, const char* value_id);
+VNode* KeyValueListItemLast(const char* key_name, const char* value_id);
 
 VNode* Button(const char* label, void* data, VEventListener on_click);
 void Button_SetLabel(VNode* node, const char* text);

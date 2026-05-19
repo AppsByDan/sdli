@@ -27,6 +27,10 @@
 
 void BindString(const char* id, const char* value);
 void BindInt(const char* id, int value);
+void BindU32(const char* id, uint32_t val);
+void BindU64(const char* id, uint64_t val);
+void BindBool(const char* id, bool val);
+void BindFloat(const char* id, float val, int digits);
 
 // Helper to deal with SDL functions that return a NULL cstring.
 static inline const char* EnsureString(const char* str, const char* default_str)

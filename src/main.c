@@ -28,11 +28,9 @@ int main(int argc, char** argv)
   LoadStyleSheet();
 
   v_node_style_assign_class(v_root(), CLS_ROOT);
+  v_node_append_child(v_root(), ScreenNavigator());
 
-  VNode* screen_navigator = ScreenNavigator();
-  v_node_append_child(v_root(), screen_navigator);
-
-  Navigator_Goto(screen_navigator, SCREENID_HOME);
+  ScreenNavigator_Goto(SCREENID_HOME);
 
   while (App_ProcessEvents()) {
     App_Present();

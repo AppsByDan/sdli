@@ -21,9 +21,9 @@ VNode* ControllerConfigScreen(void)
   VNode* screen =  Box({
     .id = SCREENID_CONTROLLER_CONFIG,
     .sclass = CLS_CENTER_XY,
-    Children({
+    Children(
       Button("Back", NULL, &BackButtonOnClick),
-    }),
+    ),
   });
   // clang-format on
 

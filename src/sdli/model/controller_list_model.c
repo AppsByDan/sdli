@@ -7,7 +7,7 @@
 #include <stc/cstr.h>
 
 //
-// macros
+// macros & constants
 //
 
 #define ReturnGamepadValue(ID, FN, DEFAULT)                              \
@@ -23,6 +23,16 @@
     return (controller && controller->joystick) ? FN(controller->joystick) \
                                                 : DEFAULT;                 \
   } while (0)
+
+static const char* JOYSTICK_PROPERTY_NAMES[] = {
+    // clang-format off
+    SDL_PROP_JOYSTICK_CAP_MONO_LED_BOOLEAN,
+    SDL_PROP_JOYSTICK_CAP_RGB_LED_BOOLEAN,
+    SDL_PROP_JOYSTICK_CAP_PLAYER_LED_BOOLEAN,
+    SDL_PROP_JOYSTICK_CAP_RUMBLE_BOOLEAN,
+    SDL_PROP_JOYSTICK_CAP_TRIGGER_RUMBLE_BOOLEAN,
+    // clang-format on
+};
 
 //
 // private types
@@ -43,6 +53,8 @@ typedef struct Controller {
 
   SDL_Joystick* joystick;
   SDL_Gamepad* gamepad;
+
+  ControllerProperty properties[c_arraylen(JOYSTICK_PROPERTY_NAMES)];
 } Controller;
 
 static void Controller_drop(Controller* controller);
@@ -82,6 +94,9 @@ static void UpdateGamepad(Controller* controller);
 static void RemoveGamepadById(ControllerId id);
 static void ClearGamepad(Controller* controller);
 static void AppEventHandler(int event_type, void* event_data, void* user_data);
+static void UpdateGUID(Controller* controller);
+static void UpdateJoystickName(Controller* controller);
+static void UpdateProperties(Controller* controller);
 
 //
 // global state
@@ -336,6 +351,26 @@ uint64_t Controller_GetSteamHandle(ControllerId id)
   ReturnGamepadValue(id, SDL_GetGamepadSteamHandle, 0);
 }
 
+const ControllerProperty* Controller_GetProperties(ControllerId id,
+                                                   int* out_count)
+{
+  Controller* controller = GetController(id);
+
+  if (!controller) {
+    *out_count = 0;
+    return NULL;
+  }
+
+  *out_count = (int)c_arraylen(controller->properties);
+  return &controller->properties[0];
+}
+
+const char** Controller_GetPropertyNames(int* out_count)
+{
+  *out_count = (int)c_arraylen(JOYSTICK_PROPERTY_NAMES);
+  return &JOYSTICK_PROPERTY_NAMES[0];
+}
+
 //
 // private function implementation
 //
@@ -376,14 +411,9 @@ static bool AddController(SDL_JoystickID id)
       .joystick = joystick,
   };
 
-  SDL_GUID guid = SDL_GetJoystickGUID(joystick);
-
-  SDL_GUIDToString(guid, &controller.guid[0], (int)sizeof(controller.guid));
-
-  const char* name = SDL_GetJoystickName(joystick);
-
-  cstr_assign(&controller.joystick_name, EnsureString(name, ""));
-
+  UpdateJoystickName(&controller);
+  UpdateGUID(&controller);
+  UpdateProperties(&controller);
   UpdatePowerInfo(&controller);
   UpdateGamepad(&controller);
 
@@ -509,5 +539,42 @@ static void AppEventHandler(int event_type, void* event_data, void* user_data)
       break;
     default:
       break;
+  }
+}
+
+static void UpdateGUID(Controller* controller)
+{
+  if (!controller) {
+    return;
+  }
+
+  SDL_GUID guid = SDL_GetJoystickGUID(controller->joystick);
+
+  SDL_GUIDToString(guid, &controller->guid[0], (int)sizeof(controller->guid));
+}
+
+static void UpdateJoystickName(Controller* controller)
+{
+  if (!controller) {
+    return;
+  }
+
+  cstr_assign(&controller->joystick_name,
+              EnsureString(SDL_GetJoystickName(controller->joystick), ""));
+}
+
+static void UpdateProperties(Controller* controller)
+{
+  if (!controller) {
+    return;
+  }
+
+  SDL_PropertiesID joystick_properties =
+      SDL_GetJoystickProperties(controller->joystick);
+  int property_count = (int)c_arraylen(controller->properties);
+
+  for (int i = 0; i < property_count; ++i) {
+    controller->properties[i].value = SDL_GetBooleanProperty(
+        joystick_properties, controller->properties[i].name, false);
   }
 }

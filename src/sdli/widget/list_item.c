@@ -4,12 +4,34 @@
 #include <sdli/util.h>
 
 //
+// private function declarations
+//
+
+static VNode* KeyValueListItemImpl(const char* key_name,
+                                   const char* value_id,
+                                   bool is_last);
+
+//
 // public function implementation
 //
 
-VNode* KeyValueListItem(const char* key_name,
-                        const char* value_id,
-                        bool is_last)
+VNode* KeyValueListItem(const char* key_name, const char* value_id)
+{
+  return KeyValueListItemImpl(key_name, value_id, false);
+}
+
+VNode* KeyValueListItemLast(const char* key_name, const char* value_id)
+{
+  return KeyValueListItemImpl(key_name, value_id, true);
+}
+
+//
+// private function implementation
+//
+
+static VNode* KeyValueListItemImpl(const char* key_name,
+                                   const char* value_id,
+                                   bool is_last)
 {
   // clang-format off
   return Box({

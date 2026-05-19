@@ -42,27 +42,27 @@ VNode* SystemPage(void)
       Box({
         .sclass= CLS_LIST,
         Children(
-          KeyValueListItem(STR(SID_VERSION), NID_SDL_VERSION, false),
-          KeyValueListItem(STR(SID_REVISION), NID_SDL_REVISION, true)
+          KeyValueListItem(STR(SID_VERSION), NID_SDL_VERSION),
+          KeyValueListItemLast(STR(SID_REVISION), NID_SDL_REVISION)
         )
       }),
       Text({.content.text = STR(SID_CAP_OS), .sclass = CLS_PAGE_H2}),
       Box({
         .sclass= CLS_LIST,
         Children(
-          KeyValueListItem(STR(SID_PLATFORM), NID_PLATFORM, false),
-          KeyValueListItem(STR(SID_THEME), NID_THEME, true)
+          KeyValueListItem(STR(SID_PLATFORM), NID_PLATFORM),
+          KeyValueListItemLast(STR(SID_THEME), NID_THEME)
         )
       }),
       Text({.content.text = STR(SID_CAP_HARDWARE), .sclass = CLS_PAGE_H2}),
       Box({
         .sclass= CLS_LIST,
         Children(
-          KeyValueListItem(STR(SID_POWER_STATE), NID_POWER_STATE, false),
-          KeyValueListItem(STR(SID_BATTERY), NID_BATTERY, false),
-          KeyValueListItem(STR(SID_CPU_CORES), NID_CPU_CORES, false),
-          KeyValueListItem(STR(SID_CACHE_LINE_SIZE), NID_CACHE_LINE_SIZE, false),
-          KeyValueListItem(STR(SID_SYSTEM_RAM), NID_SYSTEM_RAM, true)
+          KeyValueListItem(STR(SID_POWER_STATE), NID_POWER_STATE),
+          KeyValueListItem(STR(SID_BATTERY), NID_BATTERY),
+          KeyValueListItem(STR(SID_CPU_CORES), NID_CPU_CORES),
+          KeyValueListItem(STR(SID_CACHE_LINE_SIZE), NID_CACHE_LINE_SIZE),
+          KeyValueListItemLast(STR(SID_SYSTEM_RAM), NID_SYSTEM_RAM)
         )
       })
     )
