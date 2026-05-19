@@ -1,6 +1,8 @@
 #include "vuid_sdl3.h"
 
+#include "texture_cache.h"
 #include <sdli/util.h>
+
 #include <SDL3_ttf/SDL_ttf.h>
 
 #define V_GET_RENDERER(GFX) \
@@ -413,12 +415,26 @@ void v_gfx_draw_fill_rect(const VGfxContext* gfx,
                           const VColor* color,
                           uint16_t border_radius)
 {
-  UNUSED(border_radius);
   SDL_Renderer* renderer = V_GET_RENDERER(gfx);
   const SDL_FRect sdl_rect = {rect->x, rect->y, rect->width, rect->height};
 
   SDL_SetRenderDrawColor(renderer, color->r, color->g, color->b, color->a);
-  SDL_RenderFillRect(renderer, &sdl_rect);
+
+  if (border_radius > 0) {
+    const float inset = (float)border_radius;
+    SDL_Texture* texture = TextureCache_Get(border_radius, 0);
+
+    if (texture) {
+      SDL_SetTextureColorMod(texture, color->r, color->g, color->b);
+      SDL_SetTextureAlphaMod(texture, color->a);
+    }
+
+    SDL_RenderTexture9Grid(renderer, texture, NULL, inset, inset, inset, inset,
+                           0.f, &sdl_rect);
+
+  } else {
+    SDL_RenderFillRect(renderer, &sdl_rect);
+  }
 }
 
 void v_gfx_draw_rect(const VGfxContext* gfx,
@@ -430,8 +446,24 @@ void v_gfx_draw_rect(const VGfxContext* gfx,
                      uint16_t bl,
                      uint16_t border_radius)
 {
-  UNUSED(border_radius);
   SDL_Renderer* renderer = V_GET_RENDERER(gfx);
+
+  if (border_radius > 0) {
+    SDL_Texture* texture = TextureCache_Get(border_radius, bt);
+
+    if (texture) {
+      SDL_SetTextureColorMod(texture, color->r, color->g, color->b);
+      SDL_SetTextureAlphaMod(texture, color->a);
+    }
+
+    const float inset = (float)border_radius;
+    const SDL_FRect sdl_rect = {rect->x, rect->y, rect->width, rect->height};
+
+    SDL_RenderTexture9Grid(renderer, texture, NULL, inset, inset, inset, inset,
+                           0.f, &sdl_rect);
+
+    return;
+  }
 
   const float t = (float)bt;
   const float r = (float)br;

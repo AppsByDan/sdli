@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include <sdli/util.h>
+#include <sdli/vuid/texture_cache.h>
 #include <sdli/vuid/vuid_sdl3.h>
 
 #include <SDL3/SDL.h>
@@ -105,6 +106,8 @@ bool App_Init(void)
           },
   };
 
+  TextureCache_Init(g_app.renderer);
+
   if (!v_init(&config)) {
     goto error;
   }
@@ -122,6 +125,8 @@ error:
 void App_Shutdown(void)
 {
   v_quit();
+
+  TextureCache_Drop();
 
   if (g_app.text_engine) {
     TTF_DestroyRendererTextEngine(g_app.text_engine);

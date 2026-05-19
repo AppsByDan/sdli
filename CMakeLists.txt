@@ -101,6 +101,7 @@ add_library(${SDLI_LIB}
   "src/sdli/screen/controller_events_screen.c"
   "src/sdli/screen/home_screen.c"
   "src/sdli/screen/screen.c"
+  "src/sdli/vuid/texture_cache.c"
   "src/sdli/vuid/vuid_sdl3.c"
   "src/sdli/widget/button.c"
   "src/sdli/widget/list_item.c"
