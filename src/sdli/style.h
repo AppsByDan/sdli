@@ -20,6 +20,8 @@
 #define THEME_TEXT_COLOR ((VColor){0xB8, 0xBC, 0xBF, 0xFF})
 #define THEME_TEXT_HIGHLIGHT_COLOR ((VColor){0xFF, 0xFF, 0xFF, 0xFF})
 #define THEME_SCROLLBAR_COLOR ((VColor){0x44, 0x44, 0x44, 0xFF})
+#define THEME_HIGHLIGHT_1 ((VColor){0x3D, 0x44, 0x50, 0xFF})
+#define THEME_BUTTON_COLOR ((VColor){0x29, 0x2E, 0x36, 0xFF})
 
 #define THEME_SP_2XS (5)
 #define THEME_SP_XS (8)
@@ -39,6 +41,10 @@
 #define CLS_PAGE "page"
 #define CLS_PAGE_H1 "page-h1"
 #define CLS_PAGE_H2 "page-h2"
+#define CLS_BUTTON "btn"
+#define CLS_BUTTON_HOVER "btn-hover"
+#define CLS_BUTTON_TEXT "btn-text"
+#define CLS_BUTTON_TEXT_HOVER "btn-text-hover"
 #define CLS_LIST "list"
 #define CLS_LIST_ITEM "li"
 #define CLS_LIST_ITEM_LAST "li-last"

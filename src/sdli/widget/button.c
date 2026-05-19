@@ -1,0 +1,52 @@
+#include "widget.h"
+
+#include <sdli/style.h>
+#include <sdli/util.h>
+
+//
+// private function declarations
+//
+
+static void OnMouseMove(VNode* node, VEvent* event);
+
+//
+// public function implementation
+//
+
+VNode* Button(const char* label, void* data, VEventListener on_click)
+{
+  // clang-format off
+    return Box({
+      .data = data,
+      .sclass = CLS_BUTTON,
+      .on_mouse_enter = &OnMouseMove,
+      .on_mouse_leave = &OnMouseMove,
+      .on_click = on_click,
+      Children(
+        v_txt({.content.text = label, .sclass = CLS_BUTTON_TEXT})
+      )
+    });
+  // clang-format on
+  return NULL;
+}
+
+void Button_SetLabel(VNode* node, const char* text)
+{
+  v_node_set_text(v_node_child_at(node, 0), text);
+}
+
+//
+// private function implementation
+//
+
+static void OnMouseMove(VNode* node, VEvent* event)
+{
+  (void)event;
+  if (event->type == V_EVENT_MOUSE_ENTER) {
+    v_node_style_assign_class(node, CLS_BUTTON_HOVER);
+    v_node_style_assign_class(v_node_child_at(node, 0), CLS_BUTTON_TEXT_HOVER);
+  } else if (event->type == V_EVENT_MOUSE_LEAVE) {
+    v_node_style_assign_class(node, CLS_BUTTON);
+    v_node_style_assign_class(v_node_child_at(node, 0), CLS_BUTTON_TEXT);
+  }
+}

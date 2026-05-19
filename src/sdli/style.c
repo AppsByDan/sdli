@@ -1,8 +1,7 @@
-#include <sdli/style.h>
+#include "style.h"
 
 #include <sdli/assets.h>
-
-#include <vuid.h>
+#include <sdli/util.h>
 
 //
 // public function implementation
@@ -71,6 +70,25 @@ void LoadStyleSheet(void)
     vs_set_color(S, THEME_TEXT_HIGHLIGHT_COLOR);
     vs_set_width(S, V_GROW());
     vs_set_padding(S, THEME_SP_MD, 0, 6, THEME_SP_MD + 1);
+  }
+
+  vss_with(S, CLS_BUTTON)
+  {
+    vs_set_padding(S, THEME_SP_SM, THEME_SP_MD, THEME_SP_SM, THEME_SP_MD);
+    vs_set_border_radius(S, THEME_BUTTON_CORNER_RADIUS);
+    vs_set_background(S, THEME_BUTTON_COLOR);
+  }
+
+  vss_extend(S, CLS_BUTTON_HOVER, CLS_BUTTON)
+  {
+    vs_set_background(S, THEME_HIGHLIGHT_1);
+  }
+
+  vss_extend(S, CLS_BUTTON_TEXT, CLS_TEXT) {}
+
+  vss_extend(S, CLS_BUTTON_TEXT_HOVER, CLS_BUTTON_TEXT)
+  {
+    vs_set_color(S, THEME_TEXT_HIGHLIGHT_COLOR);
   }
 
   vss_with(S, CLS_LIST)

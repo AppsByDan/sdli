@@ -13,6 +13,9 @@
 //
 
 static void OnNavigatorEvent(NavigatorEvent* event);
+static void InfoButtonOnClick(VNode* node, VEvent* event);
+static void EventsButtonOnClick(VNode* node, VEvent* event);
+static void ConfigureButtonOnClick(VNode* node, VEvent* event);
 
 //
 // public function implementation
@@ -57,13 +60,41 @@ static void OnNavigatorEvent(NavigatorEvent* event)
       ControllerId id = controller_ids[i];
       const char* name = Controller_GetName(id);
       const char* guid = Controller_GetGUID(id);
-      VNode* list_item =
-          Box({.sclass = CLS_LIST, Children(Text({.sclass = CLS_TEXT}))});
+      // clang-format off
+      VNode* list_item = Box({
+        .sclass = CLS_LIST,
+        Children(
+          Text({.sclass = CLS_TEXT}),
+          Button("Info", (void*)(uintptr_t)id, &InfoButtonOnClick),
+          Button("Events", (void*)(uintptr_t)id, &EventsButtonOnClick),
+          Button("Configure", (void*)(uintptr_t)id, &ConfigureButtonOnClick),
+        )
+      });
+      // clang-format on
+      VNode* text = v_node_first_child(list_item);
 
-      v_node_set_text_fmt(v_node_first_child(list_item), "%i :: %s :: %s",
-                          (int)id, name, guid);
+      vs_set_direction(v_node_style(list_item), V_DIRECTION_ROW);
+      vs_set_gap(v_node_style(list_item), THEME_SP_SM);
+
+      vs_set_width(v_node_style(text), V_GROW());
+      v_node_set_text_fmt(text, "%i :: %s :: %s", (int)id, name, guid);
 
       v_node_append_child(list, list_item);
     }
   }
+}
+
+static void InfoButtonOnClick(VNode* node, VEvent* event)
+{
+  UNUSED(node, event);
+}
+
+static void EventsButtonOnClick(VNode* node, VEvent* event)
+{
+  UNUSED(node, event);
+}
+
+static void ConfigureButtonOnClick(VNode* node, VEvent* event)
+{
+  UNUSED(node, event);
 }
