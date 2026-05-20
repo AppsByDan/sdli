@@ -1,12 +1,12 @@
 #include "texture_cache.h"
 
-#include <sdli/util.h>
-
 //
 // constants
 //
 
+#ifndef TEXTURE_CACHE_SIZE
 #define TEXTURE_CACHE_SIZE 16
+#endif
 
 //
 // private types
@@ -28,16 +28,17 @@ struct TextureCache {
 // private function declarations
 //
 
-static SDL_Surface* GenRoundedRect(uint16_t border_radius);
-static SDL_Surface* GenRoundedRectOutline(uint16_t border_radius,
-                                          uint16_t border_width);
+static SDL_Surface* GenRoundedRect(float border_radius,
+                                   float border_width,
+                                   int width,
+                                   int height,
+                                   float feather);
 static float RoundedRectSdf(float x,
                             float y,
                             float half_core_width,
                             float half_core_height,
                             float radius);
 static float SmoothStep(float edge0, float edge1, float x);
-static float Length(float x, float y);
 
 //
 // global state
@@ -54,7 +55,9 @@ void TextureCache_Init(SDL_Renderer* renderer)
 
 void TextureCache_Drop(void)
 {
-  for (int i = 0; i < g_texture_cache.size; ++i) {
+  const int size = g_texture_cache.size;
+
+  for (int i = 0; i < size; ++i) {
     SDL_DestroyTexture(g_texture_cache.items[i].texture);
   }
   g_texture_cache = (TextureCache){0};
@@ -62,11 +65,13 @@ void TextureCache_Drop(void)
 
 SDL_Texture* TextureCache_Get(uint16_t border_radius, uint16_t border_width)
 {
-  if (g_texture_cache.size >= TEXTURE_CACHE_SIZE) {
+  const int size = g_texture_cache.size;
+
+  if (size >= TEXTURE_CACHE_SIZE) {
     return NULL;
   }
 
-  for (int i = 0; i < g_texture_cache.size; ++i) {
+  for (int i = 0; i < size; ++i) {
     TextureCacheItem* item = &g_texture_cache.items[i];
     if (item->border_radius == border_radius &&
         item->border_width == border_width) {
@@ -74,13 +79,10 @@ SDL_Texture* TextureCache_Get(uint16_t border_radius, uint16_t border_width)
     }
   }
 
-  SDL_Surface* surface;
-
-  if (border_width > 0) {
-    surface = GenRoundedRectOutline(border_radius, border_width);
-  } else {
-    surface = GenRoundedRect(border_radius);
-  }
+  const float feather = border_width > 0 ? 0.75f : 2.0f;
+  const int size = (int)(border_radius) * 2 + 2;
+  SDL_Surface* surface = GenRoundedRect(
+      (float)border_radius, (float)border_width, size, size, feather);
 
   if (!surface) {
     return NULL;
@@ -109,98 +111,29 @@ SDL_Texture* TextureCache_Get(uint16_t border_radius, uint16_t border_width)
 // private function implementation
 //
 
-static SDL_Surface* GenRoundedRect(uint16_t border_radius)
+// Creates a surface with a rounded rectangle shape.
+//
+// The shape is drawn in white with a transparent background. If border_width is
+// greater than 0, the shape will be an outline, inset in the width and height.
+// Otherwise, the shape will be filled.
+static SDL_Surface* GenRoundedRect(float border_radius,
+                                   float border_width,
+                                   int width,
+                                   int height,
+                                   float feather)
 {
-  const float FEATHER_WIDTH = 2.0f;
-
-  const float half_core_width = 1.f;
-  const float half_core_height = 1.f;
-  const float radius_f = (float)border_radius;
-  // set the core to 2 so half calculations are snapped to the pixel grid
-  const float width_f = radius_f * 2.f + 2.f;
-  // const float height_f = width_f;
-  const int width = (int)width_f;
-  const int height = width;
-  const float half_width = radius_f + half_core_width;  // width_f / 2.0f;
-  const float half_height = half_width;
-  SDL_Surface* surface =
-      SDL_CreateSurface(width, height, SDL_PIXELFORMAT_RGBA32);
-
-  if (!surface) {
-    return NULL;
-  }
-
-  if (!SDL_LockSurface(surface)) {
-    SDL_DestroySurface(surface);
-    return NULL;
-  }
-
-  uint32_t* buffer = surface->pixels;
-
-  // Iterate over each pixel in the buffer
-  for (int y = 0; y < height; ++y) {
-    const float py = (float)y - half_height + .5f;
-
-    for (int x = 0; x < width; ++x) {
-      // Transform pixel coordinates to be relative to the center of the
-      // rectangle. Subtracting (dimension / 2.0f - 0.5f) centers the shape at
-      // (0,0) and aligns pixel centers correctly.
-      const float px = (float)x - half_width + .5f;
-
-      // Calculate the signed distance using the unified SDF.
-      // IMPORTANT: Negate the result of sdRoundedRect because
-      // sdRoundedRect returns negative for inside, positive for outside,
-      // but our smoothstep expects positive for inside, negative for outside.
-      const float dist =
-          RoundedRectSdf(px, py, half_core_width, half_core_height, radius_f);
-
-      // Apply smoothstep to the signed distance to get the final alpha
-      // smoothstep(-feather_width, 0.0f, dist):
-      //   - If dist <= -feather_width (far outside), alpha = 0.0
-      //   - If dist >= 0.0f (on/inside boundary), alpha = 1.0
-      //   - Smooth transition between -feather_width and 0.0
-      const float alpha = 1.0f - SmoothStep(-FEATHER_WIDTH, 0.0f, dist);
-
-      if (alpha <= 0) {
-        buffer[y * width + x] = 0;
-      } else {
-        // Clamp alpha to [0, 1] and convert to 0-255 range
-        uint8_t alpha_u8 = (uint8_t)(SDL_min(alpha, 1.0f) * 255.0f);
-        if (alpha_u8 > 0) {
-          buffer[y * width + x] =
-              SDL_MapSurfaceRGBA(surface, 255, 255, 255, alpha_u8);
-        }
-      }
-    }
-  }
-
-  SDL_UnlockSurface(surface);
-
-  return surface;
-}
-
-static SDL_Surface* GenRoundedRectOutline(uint16_t border_radius,
-                                          uint16_t border_width)
-{
-  const float FEATHER_WIDTH = 0.75f;
-  // Core of the rounded rect will be 2x2 so all "half" calculations will be at
-  // pixel boundaries.
-  const float half_core_width = 1.0f;
-  const float half_core_height = 1.0f;
-  const float radius_f = (float)border_radius;
-  const float thickness_f = (float)border_width;
-  const float width_f = (half_core_width + radius_f + 1.0f) * 2.0f;
-  const int width = (int)width_f;
-  const int height = width;
+  const int width_f = (int)width;
+  const int height_f = (int)height;
   const float half_width = width_f / 2.0f;
-  const float half_height = half_width;
+  const float half_height = height_f / 2.0f;
+  const float half_core_width = (width_f - (border_radius * 2.0f)) / 2.0f;
+  const float half_core_height = (height_f - (border_radius * 2.0f)) / 2.0f;
+  const float half_border_width = border_width / 2.0f;
+
   SDL_Surface* surface =
       SDL_CreateSurface(width, height, SDL_PIXELFORMAT_RGBA32);
 
-  if (!surface) {
-    return NULL;
-  }
-
+  // SDL_LockSurface and SDL_DestroySurface are safe to call with NULL
   if (!SDL_LockSurface(surface)) {
     SDL_DestroySurface(surface);
     return NULL;
@@ -208,34 +141,27 @@ static SDL_Surface* GenRoundedRectOutline(uint16_t border_radius,
 
   uint32_t* buffer = surface->pixels;
 
-  // Iterate over each pixel in the buffer
-  for (int y = 0; y < height; ++y) {
+  for (int y = 0; y < height; y++) {
     const float py = (float)y - half_height + 0.5f;
 
-    for (int x = 0; x < width; ++x) {
+    for (int x = 0; x < width; x++) {
       const float px = (float)x - half_width + 0.5f;
+      float dist = RoundedRectSdf(px, py, half_core_width, half_core_height,
+                                  border_radius);
+      float alpha;
 
-      // 1. Calculate the signed distance to the SOLID rounded rectangle
-      const float dist_solid =
-          RoundedRectSdf(px, py, half_core_width, half_core_height, radius_f);
-
-      // 2. Calculate the signed distance to the OUTLINE.
-      // This formula creates a zero-crossing at a fixed distance from the solid
-      // shape's boundary.
-      const float dist_outline =
-          SDL_fabsf(dist_solid + (thickness_f / 2.0f)) - (thickness_f / 2.0f);
-
-      // 3. Apply smoothstep to the outline distance to get the final alpha
-      // smoothstep(0.0f, FEATHER_WIDTH, dist) returns 0 for values <= 0 and 1
-      // for values >= FEATHER_WIDTH. Subtracting from 1.0f inverts this,
-      // creating an opaque shape at the zero-crossing.
-      const float alpha = 1.0f - SmoothStep(0.0f, FEATHER_WIDTH, dist_outline);
+      if (border_width > 0) {
+        dist = SDL_fabsf(dist + half_border_width) - half_border_width;
+        alpha = 1.0f - SmoothStep(0.0f, feather, dist);
+      } else {
+        alpha = 1.0f - SmoothStep(-feather, 0.0f, dist);
+      }
 
       if (alpha <= 0) {
         buffer[y * width + x] = 0;
       } else {
-        // Clamp alpha to [0, 1] and convert to 0-255 range
-        uint8_t alpha_u8 = (uint8_t)(SDL_min(alpha, 1.0f) * 255.0f);
+        const uint8_t alpha_u8 =
+            (uint8_t)(SDL_clamp(alpha, 0.0f, 1.0f) * 255.0f);
         if (alpha_u8 > 0) {
           buffer[y * width + x] =
               SDL_MapSurfaceRGBA(surface, 255, 255, 255, alpha_u8);
@@ -245,23 +171,16 @@ static SDL_Surface* GenRoundedRectOutline(uint16_t border_radius,
   }
 
   SDL_UnlockSurface(surface);
-
   return surface;
 }
 
 static float SmoothStep(float edge0, float edge1, float x)
 {
-  // Clamp x to [edge0, edge1]
-  x = SDL_max(edge0, SDL_min(edge1, x));
+  x = SDL_clamp(x, edge0, edge1);
   // Normalize to [0, 1]
   x = (x - edge0) / (edge1 - edge0);
   // Apply hermite interpolation (3x^2 - 2x^3)
   return x * x * (3 - 2 * x);
-}
-
-static float Length(float x, float y)
-{
-  return SDL_sqrtf(x * x + y * y);
 }
 
 static float RoundedRectSdf(float px,
@@ -272,7 +191,8 @@ static float RoundedRectSdf(float px,
 {
   const float qx = SDL_fabsf(px) - box_half_width;
   const float qy = SDL_fabsf(py) - box_half_height;
+  const float x = SDL_max(0.0f, qx);
+  const float y = SDL_max(0.0f, qy);
 
-  return SDL_min(SDL_max(qx, qy), 0.0f) +
-         Length(SDL_max(0.0f, qx), SDL_max(0.0f, qy)) - r;
+  return SDL_min(SDL_max(qx, qy), 0.0f) + SDL_sqrtf(x * x + y * y) - r;
 }
