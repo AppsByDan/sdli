@@ -80,9 +80,9 @@ SDL_Texture* TextureCache_Get(uint16_t border_radius, uint16_t border_width)
   }
 
   const float feather = border_width > 0 ? 0.75f : 2.0f;
-  const int size = (int)(border_radius) * 2 + 2;
-  SDL_Surface* surface = GenRoundedRect(
-      (float)border_radius, (float)border_width, size, size, feather);
+  const int dim = (int)(border_radius) * 2 + 2;
+  SDL_Surface* surface = GenRoundedRect((float)border_radius,
+                                        (float)border_width, dim, dim, feather);
 
   if (!surface) {
     return NULL;
