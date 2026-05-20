@@ -27,7 +27,6 @@ VNode* Button(const char* label, void* data, VEventListener on_click)
       )
     });
   // clang-format on
-  return NULL;
 }
 
 void Button_SetLabel(VNode* node, const char* text)
