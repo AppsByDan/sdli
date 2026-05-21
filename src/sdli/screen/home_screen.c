@@ -18,16 +18,6 @@ typedef struct HomeButtonData {
 } HomeButtonData;
 
 //
-// private function declarations
-//
-
-static void StyleSheet(void);
-static VNode* HomeButton(const HomeButtonData* data);
-static void HomeButton_OnClick(VNode* node, VEvent* event);
-static void HomeButton_OnMouseOver(VNode* node, VEvent* event);
-static void OnNavigatorEvent(NavigatorEvent* event);
-
-//
 // constants
 //
 
@@ -45,6 +35,16 @@ static const HomeButtonData HOME_BUTTONS[] = {
     {SID_CONTROLLERS, ICON_GAMEPAD, PAGEID_CONTROLLER_LIST},
     {SID_SYSTEM, ICON_COG_ALT, PAGEID_SYSTEM},
 };
+
+//
+// private function declarations
+//
+
+static void StyleSheet(void);
+static VNode* HomeButton(const HomeButtonData* data);
+static void HomeButton_OnClick(VNode* node, VEvent* event);
+static void HomeButton_OnMouseOver(VNode* node, VEvent* event);
+static void OnNavigatorEvent(NavigatorEvent* event);
 
 //
 // public function implementation
@@ -83,6 +83,7 @@ VNode* HomeScreen(void)
 static void OnNavigatorEvent(NavigatorEvent* event)
 {
   if (event->type == NAVIGATOR_EVENT_ENTER) {
+    ControllerListModel_SelectController(0);
     PageNavigator_Goto(PAGEID_CONTROLLER_LIST);
   }
 }

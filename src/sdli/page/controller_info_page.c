@@ -108,7 +108,8 @@ VNode* ControllerInfoPage(void)
 static void OnNavigatorEvent(NavigatorEvent* event)
 {
   if (event->type == NAVIGATOR_EVENT_ENTER) {
-    ControllerId controller_id = 0;
+    ControllerId controller_id = ControllerListModel_GetSelectedController();
+    // TODO: what if controller_id is 0?
 
     // TODO: localize some values (?)
     // TODO: battery should be %

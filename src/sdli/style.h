@@ -22,6 +22,7 @@
 #define THEME_SCROLLBAR_COLOR ((VColor){0x44, 0x44, 0x44, 0xFF})
 #define THEME_HIGHLIGHT_1 ((VColor){0x3D, 0x44, 0x50, 0xFF})
 #define THEME_BUTTON_COLOR ((VColor){0x29, 0x2E, 0x36, 0xFF})
+#define THEME_APP_TITLE_COLOR ((VColor){0x1A, 0x9F, 0xFF, 0xFF})
 
 #define THEME_SP_2XS (5)
 #define THEME_SP_XS (8)

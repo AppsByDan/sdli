@@ -89,18 +89,24 @@ static void OnNavigatorEvent(NavigatorEvent* event)
 
 static void InfoButtonOnClick(VNode* node, VEvent* event)
 {
-  UNUSED(node, event);
+  UNUSED(event);
+  ControllerListModel_SelectController(
+      (ControllerId)(uintptr_t)v_node_data(node));
   PageNavigator_Goto(PAGEID_CONTROLLER_INFO);
 }
 
 static void EventsButtonOnClick(VNode* node, VEvent* event)
 {
-  UNUSED(node, event);
+  UNUSED(event);
+  ControllerListModel_SelectController(
+      (ControllerId)(uintptr_t)v_node_data(node));
   ScreenNavigator_Goto(SCREENID_CONTROLLER_EVENTS);
 }
 
 static void ConfigureButtonOnClick(VNode* node, VEvent* event)
 {
-  UNUSED(node, event);
+  UNUSED(event);
+  ControllerListModel_SelectController(
+      (ControllerId)(uintptr_t)v_node_data(node));
   ScreenNavigator_Goto(SCREENID_CONTROLLER_CONFIG);
 }

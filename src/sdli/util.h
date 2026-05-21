@@ -16,6 +16,9 @@
 #define UNUSED_1(arg, ...) (void)arg, UNUSED_2(__VA_ARGS__, 0)
 #define UNUSED(...) (UNUSED_1(__VA_ARGS__, 0))
 
+#define SDLI_MIN(a, b) ((a) < (b) ? (a) : (b))
+#define SDLI_MAX(a, b) ((a) > (b) ? (a) : (b))
+
 #define Box v_box
 #define Text v_txt
 #define Image v_img

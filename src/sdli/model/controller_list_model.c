@@ -80,6 +80,8 @@ static void Controller_drop(Controller* controller);
 typedef struct ControllerListModel {
   controller_map controllers;
   vec_controller_id sorted_controller_ids;
+  ControllerId selected_controller;
+  ControllerInputEventHandler input_event_handler;
 } ControllerListModel;
 
 //
@@ -94,9 +96,16 @@ static void UpdateGamepad(Controller* controller);
 static void RemoveGamepadById(ControllerId id);
 static void ClearGamepad(Controller* controller);
 static void AppEventHandler(int event_type, void* event_data, void* user_data);
+static void JoystickInputEventHandler(int event_type,
+                                      void* event_data,
+                                      void* user_data);
+static void GamepadInputEventHandler(int event_type,
+                                     void* event_data,
+                                     void* user_data);
 static void UpdateGUID(Controller* controller);
 static void UpdateJoystickName(Controller* controller);
 static void UpdateProperties(Controller* controller);
+static float JoystickAxisToFloat(Sint16 value);
 
 //
 // global state
@@ -157,6 +166,61 @@ ControllerId* ControllerListModel_SortControllers(int* out_count)
   *out_count = (int)ids->size;
 
   return ids->data;
+}
+
+ControllerId ControllerListModel_GetSelectedController(void)
+{
+  return g_controller_list_model.selected_controller;
+}
+
+void ControllerListModel_SelectController(ControllerId id)
+{
+  g_controller_list_model.selected_controller = id;
+}
+
+void ControllerListModel_EnableControllerInputEvents(
+    ControllerApi api,
+    ControllerInputEventHandler event_handler)
+{
+  ControllerListModel_DisableControllerEvents();
+
+  if (api == CONTROLLER_API_JOYSTICK) {
+    App_AddEventListener(SDL_EVENT_JOYSTICK_BUTTON_DOWN,
+                         &JoystickInputEventHandler, NULL);
+    App_AddEventListener(SDL_EVENT_JOYSTICK_BUTTON_UP,
+                         &JoystickInputEventHandler, NULL);
+    App_AddEventListener(SDL_EVENT_JOYSTICK_AXIS_MOTION,
+                         &JoystickInputEventHandler, NULL);
+    App_AddEventListener(SDL_EVENT_JOYSTICK_HAT_MOTION,
+                         &JoystickInputEventHandler, NULL);
+  } else if (api == CONTROLLER_API_GAMEPAD) {
+    App_AddEventListener(SDL_EVENT_GAMEPAD_BUTTON_DOWN,
+                         &GamepadInputEventHandler, NULL);
+    App_AddEventListener(SDL_EVENT_GAMEPAD_BUTTON_UP, &GamepadInputEventHandler,
+                         NULL);
+    App_AddEventListener(SDL_EVENT_GAMEPAD_AXIS_MOTION,
+                         &GamepadInputEventHandler, NULL);
+  } else {
+    return;
+  }
+
+  g_controller_list_model.input_event_handler = event_handler;
+}
+
+void ControllerListModel_DisableControllerEvents(void)
+{
+  App_RemoveEventListener(SDL_EVENT_JOYSTICK_BUTTON_DOWN,
+                          &JoystickInputEventHandler);
+  App_RemoveEventListener(SDL_EVENT_JOYSTICK_BUTTON_UP,
+                          &JoystickInputEventHandler);
+  App_RemoveEventListener(SDL_EVENT_JOYSTICK_AXIS_MOTION,
+                          &JoystickInputEventHandler);
+  App_RemoveEventListener(SDL_EVENT_GAMEPAD_BUTTON_DOWN,
+                          &GamepadInputEventHandler);
+  App_RemoveEventListener(SDL_EVENT_GAMEPAD_BUTTON_UP,
+                          &GamepadInputEventHandler);
+  App_RemoveEventListener(SDL_EVENT_GAMEPAD_AXIS_MOTION,
+                          &GamepadInputEventHandler);
 }
 
 const char* Controller_GetName(ControllerId id)
@@ -371,6 +435,90 @@ const char** Controller_GetPropertyNames(int* out_count)
   return &JOYSTICK_PROPERTY_NAMES[0];
 }
 
+float Controller_GetJoystickInitialAxis(ControllerId id, int axis)
+{
+  const Controller* controller = GetController(id);
+  Sint16 value = 0;
+
+  if (controller) {
+    SDL_GetJoystickAxisInitialState(controller->joystick, axis, &value);
+  }
+
+  return JoystickAxisToFloat(value);
+}
+
+const char* StandardGamepadKey_ToString(StandardGamepadKey key)
+{
+  switch (key) {
+    case SGK_BUTTON_SOUTH:
+      return "SOUTH";
+    case SGK_BUTTON_EAST:
+      return "EAST";
+    case SGK_BUTTON_WEST:
+      return "WEST";
+    case SGK_BUTTON_NORTH:
+      return "NORTH";
+    case SGK_BUTTON_BACK:
+      return "BACK";
+    case SGK_BUTTON_GUIDE:
+      return "GUIDE";
+    case SGK_BUTTON_START:
+      return "START";
+    case SGK_BUTTON_LEFT_STICK:
+      return "LEFT_STICK";
+    case SGK_BUTTON_RIGHT_STICK:
+      return "RIGHT_STICK";
+    case SGK_BUTTON_LEFT_SHOULDER:
+      return "LEFT_SHOULDER";
+    case SGK_BUTTON_RIGHT_SHOULDER:
+      return "RIGHT_SHOULDER";
+    case SGK_BUTTON_DPAD_UP:
+      return "DPAD_UP";
+    case SGK_BUTTON_DPAD_DOWN:
+      return "DPAD_DOWN";
+    case SGK_BUTTON_DPAD_LEFT:
+      return "DPAD_LEFT";
+    case SGK_BUTTON_DPAD_RIGHT:
+      return "DPAD_RIGHT";
+    case SGK_BUTTON_MISC1:
+      return "MISC1";
+    case SGK_BUTTON_RIGHT_PADDLE1:
+      return "RIGHT_PADDLE1";
+    case SGK_BUTTON_LEFT_PADDLE1:
+      return "LEFT_PADDLE1";
+    case SGK_BUTTON_RIGHT_PADDLE2:
+      return "RIGHT_PADDLE2";
+    case SGK_BUTTON_LEFT_PADDLE2:
+      return "LEFT_PADDLE2";
+    case SGK_BUTTON_TOUCHPAD:
+      return "TOUCHPAD";
+    case SGK_BUTTON_MISC2:
+      return "MISC2";
+    case SGK_BUTTON_MISC3:
+      return "MISC3";
+    case SGK_BUTTON_MISC4:
+      return "MISC4";
+    case SGK_BUTTON_MISC5:
+      return "MISC5";
+    case SGK_BUTTON_MISC6:
+      return "MISC6";
+    case SGK_AXIS_LEFTX:
+      return "AXIS_LEFTX";
+    case SGK_AXIS_LEFTY:
+      return "AXIS_LEFTY";
+    case SGK_AXIS_RIGHTX:
+      return "AXIS_RIGHTX";
+    case SGK_AXIS_RIGHTY:
+      return "AXIS_RIGHTY";
+    case SGK_AXIS_LEFT_TRIGGER:
+      return "AXIS_LEFT_TRIGGER";
+    case SGK_AXIS_RIGHT_TRIGGER:
+      return "AXIS_RIGHT_TRIGGER";
+    default:
+      return "UNKNOWN";
+  }
+}
+
 //
 // private function implementation
 //
@@ -542,6 +690,94 @@ static void AppEventHandler(int event_type, void* event_data, void* user_data)
   }
 }
 
+static void JoystickInputEventHandler(int event_type,
+                                      void* event_data,
+                                      void* user_data)
+{
+  UNUSED(user_data);
+  SDL_Event* sdl_event = event_data;
+  ControllerInputEvent input_event = {
+      .api = CONTROLLER_API_JOYSTICK,
+  };
+
+  // TODO: filter by controller id
+
+  switch (event_type) {
+    case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
+    case SDL_EVENT_JOYSTICK_BUTTON_UP:
+      if (g_controller_list_model.selected_controller !=
+          sdl_event->jbutton.which) {
+        return;
+      }
+      input_event.type = CONTROLLER_INPUT_BUTTON;
+      input_event.u.button.id = sdl_event->jbutton.button;
+      input_event.u.button.pressed =
+          (event_type == SDL_EVENT_JOYSTICK_BUTTON_DOWN);
+
+      break;
+    case SDL_EVENT_JOYSTICK_AXIS_MOTION:
+      if (g_controller_list_model.selected_controller !=
+          sdl_event->jaxis.which) {
+        return;
+      }
+      input_event.type = CONTROLLER_INPUT_AXIS;
+      input_event.u.axis.id = sdl_event->jaxis.axis;
+      input_event.u.axis.value = JoystickAxisToFloat(sdl_event->jaxis.value);
+      break;
+    case SDL_EVENT_JOYSTICK_HAT_MOTION:
+      if (g_controller_list_model.selected_controller !=
+          sdl_event->jhat.which) {
+        return;
+      }
+      input_event.type = CONTROLLER_INPUT_HAT;
+      input_event.u.hat.id = sdl_event->jhat.hat;
+      input_event.u.hat.value = sdl_event->jhat.value;
+      break;
+    default:
+      return;
+  }
+
+  g_controller_list_model.input_event_handler(&input_event);
+}
+
+static void GamepadInputEventHandler(int event_type,
+                                     void* event_data,
+                                     void* user_data)
+{
+  UNUSED(user_data);
+  SDL_Event* sdl_event = event_data;
+  ControllerInputEvent input_event = {
+      .api = CONTROLLER_API_GAMEPAD,
+  };
+
+  switch (event_type) {
+    case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+    case SDL_EVENT_GAMEPAD_BUTTON_UP:
+      if (g_controller_list_model.selected_controller !=
+          sdl_event->gbutton.which) {
+        return;
+      }
+      input_event.type = CONTROLLER_INPUT_BUTTON;
+      input_event.u.button.id = sdl_event->gbutton.button;
+      input_event.u.button.pressed =
+          (event_type == SDL_EVENT_GAMEPAD_BUTTON_DOWN);
+      break;
+    case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+      if (g_controller_list_model.selected_controller !=
+          sdl_event->gaxis.which) {
+        return;
+      }
+      input_event.type = CONTROLLER_INPUT_AXIS;
+      input_event.u.axis.id = sdl_event->gaxis.axis;
+      input_event.u.axis.value = JoystickAxisToFloat(sdl_event->gaxis.value);
+      break;
+    default:
+      return;
+  }
+
+  g_controller_list_model.input_event_handler(&input_event);
+}
+
 static void UpdateGUID(Controller* controller)
 {
   if (!controller) {
@@ -577,4 +813,10 @@ static void UpdateProperties(Controller* controller)
     controller->properties[i].value = SDL_GetBooleanProperty(
         joystick_properties, controller->properties[i].name, false);
   }
+}
+
+static float JoystickAxisToFloat(Sint16 value)
+{
+  // TODO: consider dead zone?
+  return value >= 0 ? (float)value / 32767.f : ((float)value / -32768.f) * -1.f;
 }
