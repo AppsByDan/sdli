@@ -48,7 +48,7 @@ void LoadStyleSheet(void)
   vss_with(S, CLS_PAGE)
   {
     vs_set_width(S, V_GROW());
-    vs_set_height(S, V_FIXED(720));  // TODO: review
+    vs_set_height(S, V_GROW());
     vs_set_direction(S, V_DIRECTION_COLUMN);
     vs_set_padding(S, THEME_SP_MD, THEME_SP_MD, THEME_SP_MD, THEME_SP_MD);
   }
@@ -138,15 +138,17 @@ void LoadStyleSheet(void)
     vs_set_width(S, V_FIT());
   }
 
-  vss_with(S, CLS_SCROLLABLE_LIST)
+  vss_extend(S, CLS_SCROLLABLE, CLS_FILL)
   {
-    vs_set_width(S, V_GROW());
-    vs_set_height(S, V_GROW());
-    vs_set_direction(S, V_DIRECTION_COLUMN);
-    vs_set_gap(S, THEME_SP_SM);
     vs_set_overflow(S, V_OVERFLOW_SCROLL);
+    vs_set_direction(S, V_DIRECTION_COLUMN);
     vs_set_scrollbar_thumb(S, THEME_SCROLLBAR_COLOR);
     vs_set_scrollbar_width(S, THEME_SCROLLBAR_WIDTH);
     vs_set_padding_right(S, THEME_SCROLLBAR_WIDTH + THEME_SP_SM);
+  }
+
+  vss_extend(S, CLS_SCROLLABLE_LIST, CLS_SCROLLABLE)
+  {
+    vs_set_gap(S, THEME_SP_SM);
   }
 }

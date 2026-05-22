@@ -52,34 +52,39 @@ VNode* ControllerInfoPage(void)
     Children(
       Button("Back", NULL, &OnBackButtonClick),
       Text({.content.text = STR(SID_CONTROLLER_INFO), .sclass = CLS_PAGE_H1}),
-      Text({.content.text = STR(SID_CAP_DETAILS), .sclass = CLS_PAGE_H2}),
       Box({
-        .sclass= CLS_LIST,
+        .sclass = CLS_SCROLLABLE,
         Children(
-          KeyValueListItem(STR(SID_INSTANCE_ID), NID_INSTANCE_ID),
-          KeyValueListItem(STR(SID_GUID), NID_GUID),
-          KeyValueListItem(STR(SID_POWER_STATE), NID_POWER_STATE),
-          KeyValueListItem(STR(SID_BATTERY), NID_BATTERY),
-          KeyValueListItem(STR(SID_JOYSTICK_TYPE), NID_JOYSTICK_TYPE),
-          KeyValueListItem(STR(SID_GAMEPAD_TYPE), NID_GAMEPAD_TYPE),
-          KeyValueListItem(STR(SID_CONNECTION_TYPE), NID_CONNECTION_TYPE),
-          KeyValueListItem(STR(SID_PRODUCT), NID_PRODUCT),
-          KeyValueListItem(STR(SID_PRODUCT_VERSION), NID_PRODUCT_VERSION),
-          KeyValueListItem(STR(SID_VENDOR), NID_VENDOR),
-          KeyValueListItem(STR(SID_FIRMWARE_VERSION), NID_FIRMWARE_VERSION),
-          KeyValueListItem(STR(SID_SERIAL_NUMBER), NID_SERIAL_NUMBER),
-          KeyValueListItem(STR(SID_PATH), NID_PATH),
-          KeyValueListItem(STR(SID_HAPTIC), NID_HAPTIC),
-          KeyValueListItem(STR(SID_BUTTON_COUNT), NID_BUTTON_COUNT),
-          KeyValueListItem(STR(SID_AXIS_COUNT), NID_AXIS_COUNT),
-          KeyValueListItem(STR(SID_POV_HAT_COUNT), NID_POV_HAT_COUNT),
-          KeyValueListItem(STR(SID_BALL_COUNT), NID_BALL_COUNT),
-          KeyValueListItem(STR(SID_TOUCHPAD_COUNT), NID_TOUCHPAD_COUNT),
-          KeyValueListItemLast(STR(SID_STEAM_ID), NID_STEAM_ID),
+          Text({.content.text = STR(SID_CAP_DETAILS), .sclass = CLS_PAGE_H2}),
+          Box({
+            .sclass= CLS_LIST,
+            Children(
+              KeyValueListItem(STR(SID_INSTANCE_ID), NID_INSTANCE_ID),
+              KeyValueListItem(STR(SID_GUID), NID_GUID),
+              KeyValueListItem(STR(SID_POWER_STATE), NID_POWER_STATE),
+              KeyValueListItem(STR(SID_BATTERY), NID_BATTERY),
+              KeyValueListItem(STR(SID_JOYSTICK_TYPE), NID_JOYSTICK_TYPE),
+              KeyValueListItem(STR(SID_GAMEPAD_TYPE), NID_GAMEPAD_TYPE),
+              KeyValueListItem(STR(SID_CONNECTION_TYPE), NID_CONNECTION_TYPE),
+              KeyValueListItem(STR(SID_PRODUCT), NID_PRODUCT),
+              KeyValueListItem(STR(SID_PRODUCT_VERSION), NID_PRODUCT_VERSION),
+              KeyValueListItem(STR(SID_VENDOR), NID_VENDOR),
+              KeyValueListItem(STR(SID_FIRMWARE_VERSION), NID_FIRMWARE_VERSION),
+              KeyValueListItem(STR(SID_SERIAL_NUMBER), NID_SERIAL_NUMBER),
+              KeyValueListItem(STR(SID_PATH), NID_PATH),
+              KeyValueListItem(STR(SID_HAPTIC), NID_HAPTIC),
+              KeyValueListItem(STR(SID_BUTTON_COUNT), NID_BUTTON_COUNT),
+              KeyValueListItem(STR(SID_AXIS_COUNT), NID_AXIS_COUNT),
+              KeyValueListItem(STR(SID_POV_HAT_COUNT), NID_POV_HAT_COUNT),
+              KeyValueListItem(STR(SID_BALL_COUNT), NID_BALL_COUNT),
+              KeyValueListItem(STR(SID_TOUCHPAD_COUNT), NID_TOUCHPAD_COUNT),
+              KeyValueListItemLast(STR(SID_STEAM_ID), NID_STEAM_ID),
+            )
+          }),
+          Text({.content.text = STR(SID_CAP_PROPERTIES), .sclass = CLS_PAGE_H2}),
+          properties_list
         )
-      }),
-      Text({.content.text = STR(SID_CAP_PROPERTIES), .sclass = CLS_PAGE_H2}),
-      properties_list
+      })
     )
   });
   // clang-format on

@@ -38,31 +38,36 @@ VNode* SystemPage(void)
     .sclass = CLS_PAGE,
     Children(
       Text({.content.text = STR(SID_SYSTEM), .sclass = CLS_PAGE_H1}),
-      Text({.content.text = STR(SID_CAP_SDL), .sclass = CLS_PAGE_H2}),
       Box({
-        .sclass= CLS_LIST,
+        .sclass = CLS_SCROLLABLE,
         Children(
-          KeyValueListItem(STR(SID_VERSION), NID_SDL_VERSION),
-          KeyValueListItemLast(STR(SID_REVISION), NID_SDL_REVISION)
-        )
-      }),
-      Text({.content.text = STR(SID_CAP_OS), .sclass = CLS_PAGE_H2}),
-      Box({
-        .sclass= CLS_LIST,
-        Children(
-          KeyValueListItem(STR(SID_PLATFORM), NID_PLATFORM),
-          KeyValueListItemLast(STR(SID_THEME), NID_THEME)
-        )
-      }),
-      Text({.content.text = STR(SID_CAP_HARDWARE), .sclass = CLS_PAGE_H2}),
-      Box({
-        .sclass= CLS_LIST,
-        Children(
-          KeyValueListItem(STR(SID_POWER_STATE), NID_POWER_STATE),
-          KeyValueListItem(STR(SID_BATTERY), NID_BATTERY),
-          KeyValueListItem(STR(SID_CPU_CORES), NID_CPU_CORES),
-          KeyValueListItem(STR(SID_CACHE_LINE_SIZE), NID_CACHE_LINE_SIZE),
-          KeyValueListItemLast(STR(SID_SYSTEM_RAM), NID_SYSTEM_RAM)
+          Text({.content.text = STR(SID_CAP_SDL), .sclass = CLS_PAGE_H2}),
+          Box({
+            .sclass= CLS_LIST,
+            Children(
+              KeyValueListItem(STR(SID_VERSION), NID_SDL_VERSION),
+              KeyValueListItemLast(STR(SID_REVISION), NID_SDL_REVISION)
+            )
+          }),
+          Text({.content.text = STR(SID_CAP_OS), .sclass = CLS_PAGE_H2}),
+          Box({
+            .sclass= CLS_LIST,
+            Children(
+              KeyValueListItem(STR(SID_PLATFORM), NID_PLATFORM),
+              KeyValueListItemLast(STR(SID_THEME), NID_THEME)
+            )
+          }),
+          Text({.content.text = STR(SID_CAP_HARDWARE), .sclass = CLS_PAGE_H2}),
+          Box({
+            .sclass= CLS_LIST,
+            Children(
+              KeyValueListItem(STR(SID_POWER_STATE), NID_POWER_STATE),
+              KeyValueListItem(STR(SID_BATTERY), NID_BATTERY),
+              KeyValueListItem(STR(SID_CPU_CORES), NID_CPU_CORES),
+              KeyValueListItem(STR(SID_CACHE_LINE_SIZE), NID_CACHE_LINE_SIZE),
+              KeyValueListItemLast(STR(SID_SYSTEM_RAM), NID_SYSTEM_RAM)
+            )
+          })
         )
       })
     )

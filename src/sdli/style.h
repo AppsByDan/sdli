@@ -51,6 +51,7 @@
 #define CLS_LIST_ITEM_LAST "li-last"
 #define CLS_LIST_ITEM_KEY_TEXT "li-key-text"
 #define CLS_LIST_ITEM_VALUE_TEXT "li-value-text"
+#define CLS_SCROLLABLE "sbox"
 #define CLS_SCROLLABLE_LIST "slist"
 
 //
