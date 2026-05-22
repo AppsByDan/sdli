@@ -98,7 +98,21 @@ typedef struct ControllerInputEvent {
   } u;
 } ControllerInputEvent;
 
-typedef void (*ControllerInputEventHandler)(ControllerInputEvent*);
+typedef enum ControllerChange {
+  CONTROLLER_CHANGE_ADDED,
+  CONTROLLER_CHANGE_REMOVED,
+  CONTROLLER_CHANGE_INFO,
+  CONTROLLER_CHANGE_POWER,
+  CONTROLLER_CHANGE_STEAM_HANDLE,
+} ControllerChange;
+
+typedef struct ControllerChangeEvent {
+  ControllerId id;
+  ControllerChange change;
+} ControllerChangeEvent;
+
+typedef void (*ControllerInputEventListener)(const ControllerInputEvent*);
+typedef void (*ControllerChangeEventListener)(const ControllerChangeEvent*);
 
 /*
  * SystemModel exposes system and platform information from SDL.
@@ -128,8 +142,12 @@ ControllerId ControllerListModel_GetSelectedController(void);
 void ControllerListModel_SelectController(ControllerId id);
 void ControllerListModel_EnableControllerInputEvents(
     ControllerApi api,
-    ControllerInputEventHandler event_handler);
+    ControllerInputEventListener listener);
 void ControllerListModel_DisableControllerEvents(void);
+void ControllerListModel_AddChangeEventListener(
+    ControllerChangeEventListener listener);
+void ControllerListModel_RemoveChangeEventListener(
+    ControllerChangeEventListener listener);
 
 /*
  * Controller exposes SDL Joystick and Gamepad information about a specific

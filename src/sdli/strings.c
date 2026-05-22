@@ -13,7 +13,7 @@
 // global state
 //
 
-const zsview g_strings[1][37] = {
+const zsview g_strings[1][41] = {
   [LOCALE_EN_US] = {
     [SID_AXIS_COUNT] = zv_init("Axis Count"),
     [SID_BALL_COUNT] = zv_init("Ball Count"),
@@ -35,6 +35,8 @@ const zsview g_strings[1][37] = {
     [SID_HAPTIC] = zv_init("Haptic"),
     [SID_INSTANCE_ID] = zv_init("Instance ID"),
     [SID_JOYSTICK_TYPE] = zv_init("Joystick Type"),
+    [SID_LEFT_JOYSTICK] = zv_init("Left Joystick"),
+    [SID_LEFT_TRIGGER] = zv_init("Left Trigger"),
     [SID_LOCALE_DISPLAY_NAME] = zv_init("English"),
     [SID_LOCALE_TAG] = zv_init("en-US"),
     [SID_PATH] = zv_init("Path"),
@@ -44,6 +46,8 @@ const zsview g_strings[1][37] = {
     [SID_PRODUCT] = zv_init("Product"),
     [SID_PRODUCT_VERSION] = zv_init("Product Version"),
     [SID_REVISION] = zv_init("Revision"),
+    [SID_RIGHT_JOYSTICK] = zv_init("Right Joystick"),
+    [SID_RIGHT_TRIGGER] = zv_init("Right Trigger"),
     [SID_SERIAL_NUMBER] = zv_init("Serial Number"),
     [SID_STEAM_ID] = zv_init("Steam ID"),
     [SID_SYSTEM] = zv_init("System"),

@@ -33,6 +33,12 @@ typedef struct HatDisplayInfo {
 #define NID_GAMEPAD_RIGHT_X_VALUE "cevt:grx"
 #define NID_GAMEPAD_RIGHT_Y_VALUE "cevt:gry"
 
+#define JOYSTICK_BUTTON_ID_FMT "jbtn:%i"
+#define JOYSTICK_HAT_ID_FMT "jhat:%i"
+#define JOYSTICK_AXIS_ID_FMT "jaxis:%i"
+
+#define GAMEPAD_BUTTON_ID_FMT "gbtn:%i"
+
 #define CLS_EV_SCREEN "ev-screen"
 #define CLS_EV_HEADER "ev-header"
 #define CLS_EV_BODY "ev-body"
@@ -107,8 +113,8 @@ static const int BUTTON_GRID_SIZE = (int)c_arraylen(BUTTON_GRID);
 
 static VNode* JoystickEvents(ControllerId controller_id, bool visible);
 static VNode* GamepadEvents(ControllerId controller_id, bool visible);
-static void OnJoystickControllerInputEvent(ControllerInputEvent* event);
-static void OnGamepadControllerInputEvent(ControllerInputEvent* event);
+static void OnJoystickControllerInputEvent(const ControllerInputEvent* event);
+static void OnGamepadControllerInputEvent(const ControllerInputEvent* event);
 static void OnNavigatorEvent(NavigatorEvent* event);
 static void BackButtonOnClick(VNode* node, VEvent* event);
 static void ToggleApiButtonOnClick(VNode* node, VEvent* event);
@@ -156,7 +162,7 @@ VNode* ControllerEventsScreen(void)
 // private function implementation
 //
 
-static void OnJoystickControllerInputEvent(ControllerInputEvent* event)
+static void OnJoystickControllerInputEvent(const ControllerInputEvent* event)
 {
   switch (event->type) {
     case CONTROLLER_INPUT_BUTTON: {
@@ -176,7 +182,7 @@ static void OnJoystickControllerInputEvent(ControllerInputEvent* event)
   }
 }
 
-static void OnGamepadControllerInputEvent(ControllerInputEvent* event)
+static void OnGamepadControllerInputEvent(const ControllerInputEvent* event)
 {
   switch (event->type) {
     case CONTROLLER_INPUT_BUTTON: {
@@ -236,7 +242,7 @@ static void ToggleApiButtonOnClick(VNode* node, VEvent* event)
 static void SetControllerApi(VNode* toggle, ControllerApi new_api)
 {
   ControllerId controller_id = ControllerListModel_GetSelectedController();
-  ControllerInputEventHandler event_handler = NULL;
+  ControllerInputEventListener event_handler = NULL;
   bool joystick_visible = false;
   bool gamepad_visible = false;
   const char* label = "";
@@ -319,7 +325,7 @@ static VNode* JoystickEvents(ControllerId controller_id, bool visible)
           v_children(button_text = Text({.sclass = CLS_EVJ_BUTTON_TEXT})),
       });
 
-      v_node_set_id_fmt(button, "jb:%i", i);
+      v_node_set_id_fmt(button, JOYSTICK_BUTTON_ID_FMT, i);
       v_node_set_text_fmt(button_text, "b%i", i);
 
       v_node_append_child(group, button);
@@ -340,7 +346,7 @@ static VNode* JoystickEvents(ControllerId controller_id, bool visible)
       });
 
       v_node_set_text_fmt(hat_name, "h%i", i);
-      v_node_set_id_fmt(hat, "jhat:%i", i);
+      v_node_set_id_fmt(hat, JOYSTICK_HAT_ID_FMT, i);
 
       for (size_t h = 0; h < c_arraylen(HAT_DISPLAY_INFO); h++) {
         VNode* hat_icon = Text({
@@ -374,7 +380,7 @@ static VNode* JoystickEvents(ControllerId controller_id, bool visible)
       // clang-format on
 
       v_node_set_text_fmt(axis_name, "a%i", i);
-      v_node_set_id_fmt(axis_value, "jaxis:%i", i);
+      v_node_set_id_fmt(axis_value, JOYSTICK_AXIS_ID_FMT, i);
 
       v_node_append_child(group, axis);
     }
@@ -413,7 +419,7 @@ static VNode* GamepadEvents(ControllerId controller_id, bool visible)
             .content.text = StandardGamepadKey_ToString(BUTTON_GRID[idx]),
         });
 
-        v_node_set_id_fmt(button, "gb:%i", (int)BUTTON_GRID[idx]);
+        v_node_set_id_fmt(button, GAMEPAD_BUTTON_ID_FMT, (int)BUTTON_GRID[idx]);
         v_node_style_assign_class(button, CLS_EVG_BUTTON);
         v_node_append_child(button, button_text);
       } else {
@@ -438,7 +444,7 @@ static VNode* GamepadEvents(ControllerId controller_id, bool visible)
             Children(
               Text({
                 .sclass = CLS_EVG_AXIS_KEY,
-                .content.text = "Left Trigger",
+                .content.text = STR(SID_LEFT_TRIGGER),
               }),
               Text({
                 .id = NID_GAMEPAD_LEFT_TRIGGER_VALUE,
@@ -449,7 +455,7 @@ static VNode* GamepadEvents(ControllerId controller_id, bool visible)
           Box({
             .sclass = CLS_EVG_AXIS_KV_ITEM,
             Children(
-              Text({.sclass = CLS_EVG_AXIS_KEY, .content.text = "Left Joystick"}),
+              Text({.sclass = CLS_EVG_AXIS_KEY, .content.text = STR(SID_LEFT_JOYSTICK)}),
               Text({.id = NID_GAMEPAD_LEFT_X_VALUE, .sclass = CLS_EVG_AXIS_VALUE}),
               Text({.id = NID_GAMEPAD_LEFT_Y_VALUE, .sclass = CLS_EVG_AXIS_VALUE})
             )
@@ -467,7 +473,7 @@ static VNode* GamepadEvents(ControllerId controller_id, bool visible)
             Children(
               Text({
                 .sclass = CLS_EVG_AXIS_KEY,
-                .content.text = "Right Trigger",
+                .content.text = STR(SID_RIGHT_TRIGGER),
               }),
               Text({
                 .id = NID_GAMEPAD_RIGHT_TRIGGER_VALUE,
@@ -478,7 +484,7 @@ static VNode* GamepadEvents(ControllerId controller_id, bool visible)
           Box({
             .sclass = CLS_EVG_AXIS_KV_ITEM,
             Children(
-              Text({.sclass = CLS_EVG_AXIS_KEY, .content.text = "Right Joystick"}),
+              Text({.sclass = CLS_EVG_AXIS_KEY, .content.text = STR(SID_RIGHT_JOYSTICK)}),
               Text({.id = NID_GAMEPAD_RIGHT_X_VALUE, .sclass = CLS_EVG_AXIS_VALUE}),
               Text({.id = NID_GAMEPAD_RIGHT_Y_VALUE, .sclass = CLS_EVG_AXIS_VALUE})
             )
@@ -535,7 +541,7 @@ static void UpdateGamepadAxisValue(int sgk_axis, float value)
 
 static void UpdateGamepadButtonValue(int button_id, bool pressed)
 {
-  VNode* node = v_get_node_by_id_fmt("gb:%i", button_id);
+  VNode* node = v_get_node_by_id_fmt(GAMEPAD_BUTTON_ID_FMT, button_id);
 
   v_node_style_assign_class(node,
                             pressed ? CLS_EVG_BUTTON_DOWN : CLS_EVG_BUTTON);
@@ -546,13 +552,13 @@ static void UpdateGamepadButtonValue(int button_id, bool pressed)
 
 static void UpdateJoystickAxisValue(int axis_id, float value)
 {
-  v_node_set_text_fmt(v_get_node_by_id_fmt("jaxis:%i", axis_id), "%0.3f",
-                      value);
+  v_node_set_text_fmt(v_get_node_by_id_fmt(JOYSTICK_AXIS_ID_FMT, axis_id),
+                      "%0.3f", value);
 }
 
 static void UpdateJoystickHatValue(int hat_id, uint8_t hat_value)
 {
-  VNode* hat = v_get_node_by_id_fmt("jhat:%i", hat_id);
+  VNode* hat = v_get_node_by_id_fmt(JOYSTICK_HAT_ID_FMT, hat_id);
 
   for (size_t i = 0; i < c_arraylen(HAT_DISPLAY_INFO); i++) {
     SetHatIconClass(v_node_child_at(hat, i + 1), hat_value,
@@ -562,7 +568,7 @@ static void UpdateJoystickHatValue(int hat_id, uint8_t hat_value)
 
 static void UpdateJoystickButtonValue(int button_id, bool pressed)
 {
-  VNode* node = v_get_node_by_id_fmt("jb:%i", button_id);
+  VNode* node = v_get_node_by_id_fmt(JOYSTICK_BUTTON_ID_FMT, button_id);
 
   v_node_style_assign_class(node,
                             pressed ? CLS_EVJ_BUTTON_DOWN : CLS_EVJ_BUTTON);

@@ -2,6 +2,7 @@
 #define SDLI_UTIL_H
 
 #include <assert.h>
+#include <inttypes.h>
 #include <string.h>
 
 #include <vuid.h>

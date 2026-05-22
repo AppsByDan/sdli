@@ -81,7 +81,8 @@ typedef struct ControllerListModel {
   controller_map controllers;
   vec_controller_id sorted_controller_ids;
   ControllerId selected_controller;
-  ControllerInputEventHandler input_event_handler;
+  ControllerInputEventListener input_event_listener;
+  ControllerChangeEventListener change_listeners[8];
 } ControllerListModel;
 
 //
@@ -95,17 +96,19 @@ static void UpdateGamepadById(SDL_JoystickID id);
 static void UpdateGamepad(Controller* controller);
 static void RemoveGamepadById(ControllerId id);
 static void ClearGamepad(Controller* controller);
-static void AppEventHandler(int event_type, void* event_data, void* user_data);
-static void JoystickInputEventHandler(int event_type,
-                                      void* event_data,
-                                      void* user_data);
-static void GamepadInputEventHandler(int event_type,
-                                     void* event_data,
-                                     void* user_data);
+static void OnAppEvent(int event_type, void* event_data, void* user_data);
+static void OnJoystickInputEvents(int event_type,
+                                  void* event_data,
+                                  void* user_data);
+static void OnGamepadInputEvents(int event_type,
+                                 void* event_data,
+                                 void* user_data);
 static void UpdateGUID(Controller* controller);
 static void UpdateJoystickName(Controller* controller);
 static void UpdateProperties(Controller* controller);
 static float JoystickAxisToFloat(Sint16 value);
+static void DispatchControllerChangeEvent(ControllerId id,
+                                          ControllerChange change);
 
 //
 // global state
@@ -133,14 +136,13 @@ void ControllerListModel_Init(void)
 
   SDL_free(joysticks);
 
-  App_AddEventListener(SDL_EVENT_JOYSTICK_ADDED, &AppEventHandler, NULL);
-  App_AddEventListener(SDL_EVENT_JOYSTICK_REMOVED, &AppEventHandler, NULL);
-  App_AddEventListener(SDL_EVENT_GAMEPAD_ADDED, &AppEventHandler, NULL);
-  App_AddEventListener(SDL_EVENT_GAMEPAD_REMOVED, &AppEventHandler, NULL);
-  App_AddEventListener(SDL_EVENT_GAMEPAD_REMAPPED, &AppEventHandler, NULL);
-  App_AddEventListener(SDL_EVENT_JOYSTICK_BATTERY_UPDATED, &AppEventHandler,
-                       NULL);
-  App_AddEventListener(SDL_EVENT_GAMEPAD_STEAM_HANDLE_UPDATED, &AppEventHandler,
+  App_AddEventListener(SDL_EVENT_JOYSTICK_ADDED, &OnAppEvent, NULL);
+  App_AddEventListener(SDL_EVENT_JOYSTICK_REMOVED, &OnAppEvent, NULL);
+  App_AddEventListener(SDL_EVENT_GAMEPAD_ADDED, &OnAppEvent, NULL);
+  App_AddEventListener(SDL_EVENT_GAMEPAD_REMOVED, &OnAppEvent, NULL);
+  App_AddEventListener(SDL_EVENT_GAMEPAD_REMAPPED, &OnAppEvent, NULL);
+  App_AddEventListener(SDL_EVENT_JOYSTICK_BATTERY_UPDATED, &OnAppEvent, NULL);
+  App_AddEventListener(SDL_EVENT_GAMEPAD_STEAM_HANDLE_UPDATED, &OnAppEvent,
                        NULL);
 }
 
@@ -180,47 +182,78 @@ void ControllerListModel_SelectController(ControllerId id)
 
 void ControllerListModel_EnableControllerInputEvents(
     ControllerApi api,
-    ControllerInputEventHandler event_handler)
+    ControllerInputEventListener listener)
 {
   ControllerListModel_DisableControllerEvents();
 
   if (api == CONTROLLER_API_JOYSTICK) {
-    App_AddEventListener(SDL_EVENT_JOYSTICK_BUTTON_DOWN,
-                         &JoystickInputEventHandler, NULL);
-    App_AddEventListener(SDL_EVENT_JOYSTICK_BUTTON_UP,
-                         &JoystickInputEventHandler, NULL);
-    App_AddEventListener(SDL_EVENT_JOYSTICK_AXIS_MOTION,
-                         &JoystickInputEventHandler, NULL);
-    App_AddEventListener(SDL_EVENT_JOYSTICK_HAT_MOTION,
-                         &JoystickInputEventHandler, NULL);
-  } else if (api == CONTROLLER_API_GAMEPAD) {
-    App_AddEventListener(SDL_EVENT_GAMEPAD_BUTTON_DOWN,
-                         &GamepadInputEventHandler, NULL);
-    App_AddEventListener(SDL_EVENT_GAMEPAD_BUTTON_UP, &GamepadInputEventHandler,
+    App_AddEventListener(SDL_EVENT_JOYSTICK_BUTTON_DOWN, &OnJoystickInputEvents,
                          NULL);
-    App_AddEventListener(SDL_EVENT_GAMEPAD_AXIS_MOTION,
-                         &GamepadInputEventHandler, NULL);
+    App_AddEventListener(SDL_EVENT_JOYSTICK_BUTTON_UP, &OnJoystickInputEvents,
+                         NULL);
+    App_AddEventListener(SDL_EVENT_JOYSTICK_AXIS_MOTION, &OnJoystickInputEvents,
+                         NULL);
+    App_AddEventListener(SDL_EVENT_JOYSTICK_HAT_MOTION, &OnJoystickInputEvents,
+                         NULL);
+  } else if (api == CONTROLLER_API_GAMEPAD) {
+    App_AddEventListener(SDL_EVENT_GAMEPAD_BUTTON_DOWN, &OnGamepadInputEvents,
+                         NULL);
+    App_AddEventListener(SDL_EVENT_GAMEPAD_BUTTON_UP, &OnGamepadInputEvents,
+                         NULL);
+    App_AddEventListener(SDL_EVENT_GAMEPAD_AXIS_MOTION, &OnGamepadInputEvents,
+                         NULL);
   } else {
     return;
   }
 
-  g_controller_list_model.input_event_handler = event_handler;
+  g_controller_list_model.input_event_listener = listener;
 }
 
 void ControllerListModel_DisableControllerEvents(void)
 {
   App_RemoveEventListener(SDL_EVENT_JOYSTICK_BUTTON_DOWN,
-                          &JoystickInputEventHandler);
-  App_RemoveEventListener(SDL_EVENT_JOYSTICK_BUTTON_UP,
-                          &JoystickInputEventHandler);
+                          &OnJoystickInputEvents);
+  App_RemoveEventListener(SDL_EVENT_JOYSTICK_BUTTON_UP, &OnJoystickInputEvents);
   App_RemoveEventListener(SDL_EVENT_JOYSTICK_AXIS_MOTION,
-                          &JoystickInputEventHandler);
-  App_RemoveEventListener(SDL_EVENT_GAMEPAD_BUTTON_DOWN,
-                          &GamepadInputEventHandler);
-  App_RemoveEventListener(SDL_EVENT_GAMEPAD_BUTTON_UP,
-                          &GamepadInputEventHandler);
-  App_RemoveEventListener(SDL_EVENT_GAMEPAD_AXIS_MOTION,
-                          &GamepadInputEventHandler);
+                          &OnJoystickInputEvents);
+  App_RemoveEventListener(SDL_EVENT_GAMEPAD_BUTTON_DOWN, &OnGamepadInputEvents);
+  App_RemoveEventListener(SDL_EVENT_GAMEPAD_BUTTON_UP, &OnGamepadInputEvents);
+  App_RemoveEventListener(SDL_EVENT_GAMEPAD_AXIS_MOTION, &OnGamepadInputEvents);
+}
+
+void ControllerListModel_AddChangeEventListener(
+    ControllerChangeEventListener listener)
+{
+  const size_t size = c_arraylen(g_controller_list_model.change_listeners);
+
+  for (size_t i = 0; i < size; i++) {
+    if (g_controller_list_model.change_listeners[i] == listener) {
+      return;  // already added
+    }
+  }
+
+  for (size_t i = 0; i < size; i++) {
+    if (g_controller_list_model.change_listeners[i] == NULL) {
+      g_controller_list_model.change_listeners[i] = listener;
+      return;
+    }
+  }
+
+  // TODO: unreachable
+  abort();
+}
+
+void ControllerListModel_RemoveChangeEventListener(
+    ControllerChangeEventListener listener)
+{
+  const size_t size = c_arraylen(g_controller_list_model.change_listeners);
+
+  for (size_t i = 0; i < size; i++) {
+    if (g_controller_list_model.change_listeners[i] == listener) {
+      g_controller_list_model.change_listeners[i] = NULL;
+      return;
+    }
+  }
 }
 
 const char* Controller_GetName(ControllerId id)
@@ -696,7 +729,7 @@ static void ClearGamepad(Controller* controller)
   controller->gamepad_bindings_count = 0;
 }
 
-static void AppEventHandler(int event_type, void* event_data, void* user_data)
+static void OnAppEvent(int event_type, void* event_data, void* user_data)
 {
   UNUSED(user_data);
   SDL_Event* sdl_event = event_data;
@@ -707,41 +740,45 @@ static void AppEventHandler(int event_type, void* event_data, void* user_data)
 
       if (!controller_map_contains(&g_controller_list_model.controllers, id)) {
         AddController(id);
-        // TODO: validate result
-        // TODO: notify model listener of change
+        DispatchControllerChangeEvent(id, CONTROLLER_CHANGE_ADDED);
       }
       break;
     }
     case SDL_EVENT_JOYSTICK_REMOVED:
+      DispatchControllerChangeEvent(sdl_event->jdevice.which,
+                                    CONTROLLER_CHANGE_REMOVED);
       controller_map_erase(&g_controller_list_model.controllers,
                            sdl_event->jdevice.which);
-      // TODO: notify model listener of change
       break;
     case SDL_EVENT_GAMEPAD_REMOVED:
       RemoveGamepadById(sdl_event->gdevice.which);
-      // TODO: notify model listener of change
+      DispatchControllerChangeEvent(sdl_event->gdevice.which,
+                                    CONTROLLER_CHANGE_INFO);
       break;
     case SDL_EVENT_GAMEPAD_ADDED:
     case SDL_EVENT_GAMEPAD_REMAPPED: {
       UpdateGamepadById(sdl_event->gdevice.which);
-      // TODO: notify model listener of change
+      DispatchControllerChangeEvent(sdl_event->gdevice.which,
+                                    CONTROLLER_CHANGE_INFO);
       break;
     }
     case SDL_EVENT_JOYSTICK_BATTERY_UPDATED:
       UpdatePowerInfo(GetController(sdl_event->jdevice.which));
-      // TODO: notify model listener of change
+      DispatchControllerChangeEvent(sdl_event->jdevice.which,
+                                    CONTROLLER_CHANGE_POWER);
       break;
     case SDL_EVENT_GAMEPAD_STEAM_HANDLE_UPDATED:
-      // TODO: notify model listener of change
+      DispatchControllerChangeEvent(sdl_event->gdevice.which,
+                                    CONTROLLER_CHANGE_STEAM_HANDLE);
       break;
     default:
       break;
   }
 }
 
-static void JoystickInputEventHandler(int event_type,
-                                      void* event_data,
-                                      void* user_data)
+static void OnJoystickInputEvents(int event_type,
+                                  void* event_data,
+                                  void* user_data)
 {
   UNUSED(user_data);
   SDL_Event* sdl_event = event_data;
@@ -786,12 +823,12 @@ static void JoystickInputEventHandler(int event_type,
       return;
   }
 
-  g_controller_list_model.input_event_handler(&input_event);
+  g_controller_list_model.input_event_listener(&input_event);
 }
 
-static void GamepadInputEventHandler(int event_type,
-                                     void* event_data,
-                                     void* user_data)
+static void OnGamepadInputEvents(int event_type,
+                                 void* event_data,
+                                 void* user_data)
 {
   UNUSED(user_data);
   SDL_Event* sdl_event = event_data;
@@ -825,7 +862,7 @@ static void GamepadInputEventHandler(int event_type,
       return;
   }
 
-  g_controller_list_model.input_event_handler(&input_event);
+  g_controller_list_model.input_event_listener(&input_event);
 }
 
 static void UpdateGUID(Controller* controller)
@@ -869,4 +906,28 @@ static float JoystickAxisToFloat(Sint16 value)
 {
   // TODO: consider dead zone?
   return value >= 0 ? (float)value / 32767.f : ((float)value / -32768.f) * -1.f;
+}
+
+static void DispatchControllerChangeEvent(ControllerId id,
+                                          ControllerChange change)
+{
+  const size_t size = c_arraylen(g_controller_list_model.change_listeners);
+
+  if (size == 0) {
+    return;
+  }
+
+  ControllerChangeEvent event = {
+      .id = id,
+      .change = change,
+  };
+
+  for (size_t i = 0; i < size; i++) {
+    ControllerChangeEventListener listener =
+        g_controller_list_model.change_listeners[i];
+
+    if (listener) {
+      listener(&event);
+    }
+  }
 }
