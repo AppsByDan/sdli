@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: libsdl-org/setup-sdl@main
+      id: sdl
+      with:
+        install-linux-dependencies: true
+        version: 3.2.20
+        version-sdl-ttf: 3.2.2
+    - name: Build
+      run: |
+        cmake --preset debug
+        cmake --build build-debug
+  build-linux-mingw:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: |
+        cmake --preset debug-mingw-cross
+        cmake --build build-debug-mingw
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: |
+        cmake --preset debug
+        cmake --build build-debug
+  build-macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: |
+        cmake --preset debug
+        cmake --build build-debug
