@@ -9,7 +9,7 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
     - uses: libsdl-org/setup-sdl@main
       id: sdl
       with:
@@ -27,7 +27,7 @@ jobs:
   build-linux-mingw:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
     - name: Install MinGW
       run: |
         sudo apt-get update
@@ -46,7 +46,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
     - name: Build
       run: |
         cmake --preset debug
@@ -61,7 +61,7 @@ jobs:
   build-macos:
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
     - name: Build
       run: |
         cmake --preset debug
