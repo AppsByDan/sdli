@@ -12,6 +12,11 @@ set(SDLI_EXE sdli)
 set(SDLI_LIB sdli_lib)
 set(VUID_LIB vuid_lib)
 
+if (APPLE)
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum MacOS deployment version")
+  set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "MacOS architectures to build for")
+endif()
+
 #
 # sdli specific build options
 #
@@ -163,6 +168,11 @@ if (WIN32)
     WIN32_EXECUTABLE TRUE
     PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/$<0:>"
+  )
+elseif(APPLE)
+  # TODO: add plist and icons resource files
+  set_target_properties(${SDLI_EXE} PROPERTIES
+    MACOSX_BUNDLE TRUE
   )
 else()
   target_link_options(${SDLI_EXE} PRIVATE
