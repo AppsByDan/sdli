@@ -2145,7 +2145,7 @@ static void v_layout_pass3_height(VNode* node) {
       min_h = pref_h = total_h;
     } else if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_WRAP) {
       const float extra_h = (float)(vs_get_pt(style) + vs_get_pb(style) +
-                            vs_get_bt(style) + vs_get_bb(style));
+                                    vs_get_bt(style) + vs_get_bb(style));
       VSizing sh = vs_get_height(style);
       // Column-wrap needs a height constraint to know when to break into a new
       // column. For FIXED height that constraint is known; for GROW/FIT it
@@ -2185,6 +2185,13 @@ static void v_layout_pass3_height(VNode* node) {
   }
 
   node->content_height = pref_h;
+
+  // Scroll containers can overflow; content size must not inflate min_h or
+  // pass 4's clamping will size them to their full content height, leaving
+  // no room to scroll (max_scroll would compute to 0).
+  if (vs_get_overflow(style) == V_OVERFLOW_SCROLL) {
+    min_h = 0;
+  }
 
   // Add padding and borders
   const float extra_h = (float)(vs_get_pt(style) + vs_get_pb(style) +
