@@ -40,6 +40,10 @@ VNode* KeyValueListItem(const char* key_name, const char* value_id);
 VNode* KeyValueListItemLast(const char* key_name, const char* value_id);
 
 VNode* Button(const char* label, void* data, VEventListener on_click);
+VNode* ButtonWithId(const char* id,
+                    const char* label,
+                    void* data,
+                    VEventListener on_click);
 void Button_SetLabel(VNode* node, const char* text);
 
 #endif  // SDLI_WIDGET_H

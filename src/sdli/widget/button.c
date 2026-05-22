@@ -15,8 +15,17 @@ static void OnMouseMove(VNode* node, VEvent* event);
 
 VNode* Button(const char* label, void* data, VEventListener on_click)
 {
+  return ButtonWithId(NULL, label, data, on_click);
+}
+
+VNode* ButtonWithId(const char* id,
+                    const char* label,
+                    void* data,
+                    VEventListener on_click)
+{
   // clang-format off
     return Box({
+      .id = id,
       .data = data,
       .sclass = CLS_BUTTON,
       .on_mouse_enter = &OnMouseMove,

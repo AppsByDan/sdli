@@ -159,7 +159,11 @@ uint64_t Controller_GetSteamHandle(ControllerId id);
 const ControllerProperty* Controller_GetProperties(ControllerId id,
                                                    int* out_count);
 const char** Controller_GetPropertyNames(int* out_count);
-float Controller_GetJoystickInitialAxis(ControllerId id, int axis);
+float Controller_GetJoystickAxisValue(ControllerId id, int axis);
+uint8_t Controller_GetJoystickHatValue(ControllerId id, int hat);
+bool Controller_GetJoystickButtonValue(ControllerId id, int button);
+float Controller_GetAxisValue(ControllerId id, StandardGamepadKey axis);
+bool Controller_GetButtonValue(ControllerId id, StandardGamepadKey button);
 
 const char* StandardGamepadKey_ToString(StandardGamepadKey key);
 

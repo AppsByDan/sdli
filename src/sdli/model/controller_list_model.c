@@ -435,16 +435,65 @@ const char** Controller_GetPropertyNames(int* out_count)
   return &JOYSTICK_PROPERTY_NAMES[0];
 }
 
-float Controller_GetJoystickInitialAxis(ControllerId id, int axis)
+float Controller_GetJoystickAxisValue(ControllerId id, int axis)
 {
   const Controller* controller = GetController(id);
   Sint16 value = 0;
 
   if (controller) {
-    SDL_GetJoystickAxisInitialState(controller->joystick, axis, &value);
+    value = SDL_GetJoystickAxis(controller->joystick, axis);
   }
 
   return JoystickAxisToFloat(value);
+}
+
+uint8_t Controller_GetJoystickHatValue(ControllerId id, int hat)
+{
+  const Controller* controller = GetController(id);
+  uint8_t value = 0;
+
+  if (controller) {
+    value = SDL_GetJoystickHat(controller->joystick, hat);
+  }
+
+  return value;
+}
+
+bool Controller_GetJoystickButtonValue(ControllerId id, int button)
+{
+  const Controller* controller = GetController(id);
+  uint8_t value = 0;
+
+  if (controller) {
+    value = SDL_GetJoystickButton(controller->joystick, button);
+  }
+
+  return value != 0;
+}
+
+float Controller_GetAxisValue(ControllerId id, StandardGamepadKey axis)
+{
+  Controller* controller = GetController(id);
+
+  if (!controller || axis < STANDARD_GAMEPAD_KEY_AXIS_OFFSET ||
+      axis >= STANDARD_GAMEPAD_KEY_AXIS_OFFSET + STANDARD_GAMEPAD_AXIS_COUNT) {
+    return 0;
+  }
+
+  return JoystickAxisToFloat(SDL_GetGamepadAxis(
+      controller->gamepad, axis - STANDARD_GAMEPAD_KEY_AXIS_OFFSET));
+}
+
+bool Controller_GetButtonValue(ControllerId id, StandardGamepadKey button)
+{
+  Controller* controller = GetController(id);
+
+  if (!controller || button < 0 || button >= STANDARD_GAMEPAD_KEY_AXIS_OFFSET) {
+    return false;
+  }
+
+  return SDL_GetGamepadButton(controller->gamepad, (SDL_GamepadButton)button) !=
+         0;
 }
 
 const char* StandardGamepadKey_ToString(StandardGamepadKey key)
@@ -768,7 +817,8 @@ static void GamepadInputEventHandler(int event_type,
         return;
       }
       input_event.type = CONTROLLER_INPUT_AXIS;
-      input_event.u.axis.id = sdl_event->gaxis.axis;
+      input_event.u.axis.id =
+          sdl_event->gaxis.axis + STANDARD_GAMEPAD_KEY_AXIS_OFFSET;
       input_event.u.axis.value = JoystickAxisToFloat(sdl_event->gaxis.value);
       break;
     default:
