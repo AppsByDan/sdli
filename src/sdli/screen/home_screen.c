@@ -1,6 +1,7 @@
 #include <sdli/screen/screen.h>
 
 #include <sdli/app.h>
+#include <sdli/model/model.h>
 #include <sdli/page/page.h>
 #include <sdli/strings.h>
 #include <sdli/style.h>
