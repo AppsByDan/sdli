@@ -55,9 +55,9 @@ jobs:
       with:
         name: sdli-windows-x64
         path: |
-          build-debug-mingw/bin/sdli.exe
-          build-debug-mingw/bin/SDL3.dll
-          build-debug-mingw/bin/SDL3_ttf.dll
+          build-debug/bin/sdli.exe
+          build-debug/bin/SDL3.dll
+          build-debug/bin/SDL3_ttf.dll
   build-macos:
     runs-on: macos-latest
     steps:
