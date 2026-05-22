@@ -560,7 +560,7 @@ static void UpdateJoystickHatValue(int hat_id, uint8_t hat_value)
 {
   VNode* hat = v_get_node_by_id_fmt(JOYSTICK_HAT_ID_FMT, hat_id);
 
-  for (size_t i = 0; i < c_arraylen(HAT_DISPLAY_INFO); i++) {
+  for (int i = 0; i < (int)c_arraylen(HAT_DISPLAY_INFO); i++) {
     SetHatIconClass(v_node_child_at(hat, i + 1), hat_value,
                     HAT_DISPLAY_INFO[i].mask);
   }
@@ -694,7 +694,7 @@ static void StyleSheet(void)
     vs_set_border_color(S, THEME_TEXT_COLOR);
     vs_set_border_radius(S, 24);
     vs_set_border(S, 2, 2, 2, 2);
-    vs_set_width(S, V_FIXED((uint64_t)max_width + (20 * 2)));
+    vs_set_width(S, V_FIXED(max_width + (20.f * 2.f)));
     vs_set_height(S, V_FIXED(48));
     vs_set_xalign(S, V_ALIGN_X_CENTER);
     vs_set_yalign(S, V_ALIGN_Y_CENTER);
