@@ -6,13 +6,15 @@
 #include <sdli/util.h>
 #include <sdli/widget/widget.h>
 
+#include <stc/cstr.h>
+
 //
 // private types
 //
 
 typedef struct HatDisplayInfo {
   const char* icon;
-  uint8_t mask;
+  ControllerPovHatMask mask;
 } HatDisplayInfo;
 
 //
@@ -44,10 +46,6 @@ typedef struct HatDisplayInfo {
 #define CLS_EVJ_BUTTON_TEXT_UNMAPPED "evj-btn-text-u"
 #define CLS_EVJ_BUTTON_TEXT_PRESS "evj-btn-text-press"
 #define CLS_EVJ_GROUP "evj-group"
-#define CLS_EVJ_HAT "evj-hat"
-#define CLS_EVJ_HAT_DOWN "evj-hat-down"
-#define CLS_EVJ_HAT_ICON "evj-hat-icon"
-#define CLS_EVJ_HAT_ICON_DOWN "evj-hat-icon-down"
 #define CLS_EVJ_AXIS "evj-axis"
 #define CLS_EVJ_AXIS_KEY "evj-axis-key"
 #define CLS_EVJ_AXIS_VALUE "evj-axis-val"
@@ -64,9 +62,16 @@ typedef struct HatDisplayInfo {
 #define CLS_EVG_AXIS_KV_ITEM "evg-axis-kv"
 #define CLS_EVG_AXIS_KEY "evg-axis-key"
 #define CLS_EVG_AXIS_VALUE "evg-axis-val"
+#define CLS_DPAD "dpad"
+#define CLS_DPAD_DOWN "dpad-down"
+#define CLS_DPAD_ROW "dpad-row"
+#define CLS_DPAD_ICON "dpad-icon"
+#define CLS_DPAD_ICON_DOWN "dpad-icon-down"
+#define CLS_DPAD_BLOCK "dpad-block"
 
 #define JOYSTICK_BUTTON_ID_FMT "jbtn:%i"
 #define JOYSTICK_HAT_ID_FMT "jhat:%i"
+#define JOYSTICK_HAT_DIRECTION_ID_FMT "jhat:%ix%i"
 #define JOYSTICK_AXIS_ID_FMT "jaxis:%i"
 
 #define GAMEPAD_BUTTON_ID_FMT "gbtn:%i"
@@ -123,18 +128,23 @@ static const int BUTTON_GRID_SIZE = (int)c_arraylen(BUTTON_GRID);
 
 static VNode* JoystickEvents(ControllerId controller_id, bool visible);
 static VNode* GamepadEvents(ControllerId controller_id, bool visible);
+static VNode* DirectionPadBlock(int hat_id, ControllerPovHatMask direction);
+static VNode* DirectionPad(int hat_id);
+static VNode* JoystickButton(int button_id);
+static VNode* JoystickButton_GetText(VNode* button);
+static VNode* JoystickAxis(int axis_id);
 static void OnJoystickControllerInputEvent(const ControllerInputEvent* event);
 static void OnGamepadControllerInputEvent(const ControllerInputEvent* event);
 static void OnNavigatorEvent(NavigatorEvent* event);
 static void BackButtonOnClick(VNode* node, VEvent* event);
 static void ToggleApiButtonOnClick(VNode* node, VEvent* event);
 static void SetControllerApi(VNode* toggle, ControllerApi new_api);
-static void SetHatIconClass(VNode* hat_icon, uint8_t hat_value, uint8_t mask);
 static void UpdateGamepadAxisValue(int sgk_axis, float value);
 static void UpdateGamepadButtonValue(int sgk_button, bool pressed);
 static void UpdateJoystickAxisValue(int axis_id, float value);
 static void UpdateJoystickButtonValue(int button_id, bool pressed);
 static void UpdateJoystickHatValue(int hat_id, uint8_t hat_value);
+static VNode* DirectionPadBlock_GetText(VNode* block);
 static void StyleSheet(void);
 
 //
@@ -329,17 +339,7 @@ static VNode* JoystickEvents(ControllerId controller_id, bool visible)
     VNode* group = Box({.sclass = CLS_EVJ_GROUP});
 
     for (int i = 0; i < button_count; i++) {
-      VNode* button_text;
-      VNode* button = Box({
-          .sclass = CLS_EVJ_BUTTON,
-          .data = (void*)(uintptr_t)i,
-          v_children(button_text = Text({.sclass = CLS_EVJ_BUTTON_TEXT})),
-      });
-
-      v_node_set_id_fmt(button, JOYSTICK_BUTTON_ID_FMT, i);
-      v_node_set_text_fmt(button_text, JOYSTICK_BUTTON_DISPLAY_FMT, i);
-
-      v_node_append_child(group, button);
+      v_node_append_child(group, JoystickButton(i));
     }
 
     v_node_append_child(box, group);
@@ -349,25 +349,7 @@ static VNode* JoystickEvents(ControllerId controller_id, bool visible)
     VNode* group = Box({.sclass = CLS_EVJ_GROUP});
 
     for (int i = 0; i < hat_count; i++) {
-      VNode* hat_name;
-      VNode* hat = Box({
-          .sclass = CLS_EVJ_HAT,
-          .data = (void*)(uintptr_t)i,
-          Children(hat_name = Text({.sclass = CLS_EVJ_BUTTON_TEXT})),
-      });
-
-      v_node_set_text_fmt(hat_name, JOYSTICK_HAT_DISPLAY_FMT, i);
-      v_node_set_id_fmt(hat, JOYSTICK_HAT_ID_FMT, i);
-
-      for (size_t h = 0; h < c_arraylen(HAT_DISPLAY_INFO); h++) {
-        VNode* hat_icon = Text({
-            .sclass = CLS_EVJ_HAT_ICON,
-            .content.text = HAT_DISPLAY_INFO[h].icon,
-        });
-        v_node_append_child(hat, hat_icon);
-      }
-
-      v_node_append_child(group, hat);
+      v_node_append_child(group, DirectionPad(i));
     }
 
     v_node_append_child(box, group);
@@ -377,23 +359,7 @@ static VNode* JoystickEvents(ControllerId controller_id, bool visible)
     VNode* group = Box({.sclass = CLS_EVJ_GROUP});
 
     for (int i = 0; i < axis_count; i++) {
-      VNode* axis_name;
-      VNode* axis_value;
-      // clang-format off
-      VNode* axis = Box({
-          .data = (void*)(uintptr_t)i,
-          .sclass = CLS_EVJ_AXIS,
-          Children(
-            axis_name = Text({.sclass = CLS_EVJ_AXIS_KEY}),
-            axis_value = Text({.sclass = CLS_EVJ_AXIS_VALUE})
-          ),
-      });
-      // clang-format on
-
-      v_node_set_id_fmt(axis_value, JOYSTICK_AXIS_ID_FMT, i);
-      v_node_set_text_fmt(axis_name, JOYSTICK_AXIS_DISPLAY_FMT, i);
-
-      v_node_append_child(group, axis);
+      v_node_append_child(group, JoystickAxis(i));
     }
 
     v_node_append_child(box, group);
@@ -515,10 +481,108 @@ static VNode* GamepadEvents(ControllerId controller_id, bool visible)
   return box;
 }
 
-static void SetHatIconClass(VNode* hat_icon, uint8_t hat_value, uint8_t mask)
+static VNode* DirectionPadBlock(int hat_id, ControllerPovHatMask direction)
 {
-  v_node_style_assign_class(
-      hat_icon, (hat_value & mask) ? CLS_EVJ_HAT_ICON_DOWN : CLS_EVJ_HAT_ICON);
+  const char* text = "";
+
+  for (size_t i = 0; i < c_arraylen(HAT_DISPLAY_INFO); i++) {
+    if (HAT_DISPLAY_INFO[i].mask == direction) {
+      text = HAT_DISPLAY_INFO[i].icon;
+      break;
+    }
+  }
+
+  // clang-format off
+  VNode* box = Box({
+    .sclass = CLS_DPAD_BLOCK,
+    Children(Text({
+      .sclass = CLS_DPAD_ICON,
+      .content.text = text,
+    }))
+  });
+  // clang-format on
+
+  v_node_set_id_fmt(box, JOYSTICK_HAT_DIRECTION_ID_FMT, hat_id, (int)direction);
+
+  return box;
+}
+
+static VNode* DirectionPad(int hat_id)
+{
+  VNode* inner_block;
+  // clang-format off
+  VNode* dpad = Box({
+    .sclass = CLS_DPAD,
+    Children(
+      Box({
+        .sclass = CLS_DPAD_ROW,
+        Children(DirectionPadBlock(hat_id, POV_HAT_MASK_UP))
+      }),
+      Box({
+        .sclass = CLS_DPAD_ROW,
+        Children(
+          DirectionPadBlock(hat_id, POV_HAT_MASK_LEFT),
+          inner_block = Box({
+            .sclass = CLS_DPAD_BLOCK,
+            Children(Text({.sclass = CLS_TEXT}))
+          }),
+          DirectionPadBlock(hat_id, POV_HAT_MASK_RIGHT)
+        )
+      }),
+      Box({
+        .sclass = CLS_DPAD_ROW,
+        Children(DirectionPadBlock(hat_id, POV_HAT_MASK_DOWN))
+      })
+    )
+  });
+  // clang-format on
+
+  v_node_set_id_fmt(dpad, JOYSTICK_HAT_ID_FMT, hat_id);
+  v_node_set_text_fmt(DirectionPadBlock_GetText(inner_block),
+                      JOYSTICK_HAT_DISPLAY_FMT, hat_id);
+
+  return dpad;
+}
+
+static VNode* JoystickButton(int button_id)
+{
+  // clang-format off
+  VNode* button = Box({
+    .sclass = CLS_EVJ_BUTTON,
+    .data = (void*)(uintptr_t)button_id,
+    Children(Text({.sclass = CLS_EVJ_BUTTON_TEXT})),
+  });
+  // clang-format on
+
+  v_node_set_id_fmt(button, JOYSTICK_BUTTON_ID_FMT, button_id);
+  v_node_set_text_fmt(JoystickButton_GetText(button),
+                      JOYSTICK_BUTTON_DISPLAY_FMT, button_id);
+
+  return button;
+}
+
+static VNode* JoystickButton_GetText(VNode* button)
+{
+  return v_node_first_child(button);
+}
+
+static VNode* JoystickAxis(int axis_id)
+{
+  // clang-format off
+  VNode* axis = Box({
+    .sclass = CLS_EVJ_AXIS,
+    Children(
+      Text({.sclass = CLS_EVJ_AXIS_KEY}),
+      Text({.sclass = CLS_EVJ_AXIS_VALUE})
+    ),
+  });
+  // clang-format on
+
+  v_node_set_text_fmt(v_node_child_at(axis, 0), JOYSTICK_AXIS_DISPLAY_FMT,
+                      axis_id);
+  v_node_set_id_fmt(v_node_child_at(axis, 1), JOYSTICK_AXIS_ID_FMT, axis_id);
+
+  return axis;
 }
 
 static void UpdateGamepadAxisValue(int sgk_axis, float value)
@@ -576,23 +640,38 @@ static void UpdateJoystickAxisValue(int axis_id, float value)
 
 static void UpdateJoystickHatValue(int hat_id, uint8_t hat_value)
 {
-  VNode* hat = v_get_node_by_id_fmt(JOYSTICK_HAT_ID_FMT, hat_id);
-
   for (int i = 0; i < (int)c_arraylen(HAT_DISPLAY_INFO); i++) {
-    SetHatIconClass(v_node_child_at(hat, i + 1), hat_value,
-                    HAT_DISPLAY_INFO[i].mask);
+    const int mask = (int)HAT_DISPLAY_INFO[i].mask;
+    const bool pressed = (hat_value & mask) != 0;
+
+    VNode* dpad_block =
+        v_get_node_by_id_fmt(JOYSTICK_HAT_DIRECTION_ID_FMT, hat_id, mask);
+
+    v_node_style_assign_class(DirectionPadBlock_GetText(dpad_block),
+                              pressed ? CLS_DPAD_ICON_DOWN : CLS_DPAD_ICON);
   }
+
+  // TODO: not sure i like this effect
+  // const bool any_pressed = hat_value != 0;
+  // VNode* dpad = v_get_node_by_id_fmt(JOYSTICK_HAT_ID_FMT, hat_id);
+
+  // v_node_style_assign_class(dpad, any_pressed ? CLS_DPAD_DOWN : CLS_DPAD);
 }
 
 static void UpdateJoystickButtonValue(int button_id, bool pressed)
 {
-  VNode* node = v_get_node_by_id_fmt(JOYSTICK_BUTTON_ID_FMT, button_id);
+  VNode* button = v_get_node_by_id_fmt(JOYSTICK_BUTTON_ID_FMT, button_id);
 
-  v_node_style_assign_class(node,
+  v_node_style_assign_class(button,
                             pressed ? CLS_EVJ_BUTTON_DOWN : CLS_EVJ_BUTTON);
   v_node_style_assign_class(
-      v_node_first_child(node),
+      JoystickButton_GetText(button),
       pressed ? CLS_EVJ_BUTTON_TEXT_PRESS : CLS_EVJ_BUTTON_TEXT);
+}
+
+static VNode* DirectionPadBlock_GetText(VNode* block)
+{
+  return v_node_first_child(block);
 }
 
 static void StyleSheet(void)
@@ -646,7 +725,7 @@ static void StyleSheet(void)
   vss_with(S, CLS_EVJ_BUTTON)
   {
     vs_set_border_color(S, THEME_TEXT_COLOR);
-    vs_set_border_radius(S, THEME_JOYSTICK_BUTTON_SIZE / 2);
+    vs_set_border_radius(S, 1000);
     vs_set_border_all(S, THEME_EVENT_BUTTON_BORDER);
     vs_set_width(S, V_FIXED(THEME_JOYSTICK_BUTTON_SIZE));
     vs_set_height(S, V_FIXED(THEME_JOYSTICK_BUTTON_SIZE));
@@ -693,33 +772,10 @@ static void StyleSheet(void)
     vs_set_gap(S, THEME_SP_2XS);
   }
 
-  vss_with(S, CLS_EVJ_HAT)
-  {
-    vs_set_border_color(S, THEME_TEXT_COLOR);
-    vs_set_border_radius(S, THEME_JOYSTICK_BUTTON_SIZE / 2);
-    vs_set_border_all(S, THEME_EVENT_BUTTON_BORDER);
-    vs_set_yalign(S, V_ALIGN_Y_CENTER);
-    vs_set_height(S, V_FIXED(THEME_JOYSTICK_BUTTON_SIZE));
-    vs_set_gap(S, THEME_SP_XS);
-    vs_set_padding(S, 0, THEME_SP_MD, 0, THEME_SP_MD);
-  }
-
-  vss_extend(S, CLS_EVJ_HAT_DOWN, CLS_EVJ_HAT)
-  {
-    vs_set_border_color(S, THEME_APP_TITLE_COLOR);
-  }
-
-  vss_extend(S, CLS_EVJ_HAT_ICON, CLS_ICON) {}
-
-  vss_extend(S, CLS_EVJ_HAT_ICON_DOWN, CLS_EVJ_HAT_ICON)
-  {
-    vs_set_color(S, THEME_APP_TITLE_COLOR);
-  }
-
   vss_with(S, CLS_EVJ_AXIS)
   {
     vs_set_border_color(S, THEME_TEXT_COLOR);
-    vs_set_border_radius(S, THEME_JOYSTICK_BUTTON_SIZE / 2);
+    vs_set_border_radius(S, 1000);
     vs_set_border_all(S, THEME_EVENT_BUTTON_BORDER);
     vs_set_yalign(S, V_ALIGN_Y_CENTER);
     vs_set_height(S, V_FIXED(THEME_JOYSTICK_BUTTON_SIZE));
@@ -745,7 +801,7 @@ static void StyleSheet(void)
     const uint16_t half_height = THEME_GAMEPAD_BUTTON_HEIGHT / 2;
 
     vs_set_border_color(S, THEME_TEXT_COLOR);
-    vs_set_border_radius(S, half_height);
+    vs_set_border_radius(S, 1000);
     vs_set_border_all(S, THEME_EVENT_BUTTON_BORDER);
     vs_set_width(S, V_FIXED(max_width + (float)(half_height * 2)));
     vs_set_height(S, V_FIXED(THEME_GAMEPAD_BUTTON_HEIGHT));
@@ -807,4 +863,49 @@ static void StyleSheet(void)
   }
 
   vss_extend(S, CLS_EVG_AXIS_VALUE, CLS_TEXT) {}
+
+  vss_with(S, CLS_DPAD)
+  {
+    vs_set_border_color(S, THEME_TEXT_COLOR);
+    vs_set_border_radius(S, 1000);
+    vs_set_border_all(S, THEME_EVENT_BUTTON_BORDER);
+
+    vs_set_direction(S, V_DIRECTION_COLUMN);
+    vs_set_width(S, V_FIT());
+    vs_set_padding_all(S, THEME_SP_2XS);
+  }
+
+  vss_extend(S, CLS_DPAD_DOWN, CLS_DPAD)
+  {
+    vs_set_border_color(S, THEME_APP_TITLE_COLOR);
+  }
+
+  vss_with(S, CLS_DPAD_ROW)
+  {
+    vs_set_width(S, V_GROW());
+    vs_set_xalign(S, V_ALIGN_X_CENTER);
+  }
+
+  vss_extend(S, CLS_DPAD_ICON, CLS_ICON)
+  {
+    vs_set_font_size(S, 24);
+  }
+
+  vss_extend(S, CLS_DPAD_ICON_DOWN, CLS_DPAD_ICON)
+  {
+    vs_set_color(S, THEME_APP_TITLE_COLOR);
+  }
+
+  vss_with(S, CLS_DPAD_BLOCK)
+  {
+    VStyle* dpad_icon_style = vss_get_class(CLS_DPAD_ICON);
+    const float block_size =
+        SDLI_MAX(v_style_measure_text_w(dpad_icon_style, ICON_UP),
+                 v_style_measure_text_w(dpad_icon_style, ICON_RIGHT));
+
+    vs_set_width(S, V_FIXED(block_size * 1.5f));
+    vs_set_height(S, V_FIXED(block_size * 1.5f));
+    vs_set_xalign(S, V_ALIGN_X_CENTER);
+    vs_set_yalign(S, V_ALIGN_Y_CENTER);
+  }
 }
