@@ -1267,13 +1267,30 @@ static void v_node_draw_recursive(VNode* node,
   const float node_pl = vs_get_pl(style);
   const bool has_background_color = vs_has_prop(style, VS_BACKGROUND);
   const VGfxContext* gfx = v_gfx();
+  float border_radius = vs_get_border_radius(style);
+
+  if (border_radius == 50) {
+    printf("border radius 50\n");
+  }
+
+  if (border_radius > 0) {
+    const float half_width = node->bounds.width / 2.0f;
+    const float half_height = node->bounds.height / 2.0f;
+
+    if (border_radius > half_width) {
+      border_radius = half_width;
+    }
+
+    if (border_radius > half_height) {
+      border_radius = half_height;
+    }
+  }
 
   if (node->tag == V_NODE_ROOT) {
     v_gfx_clear(gfx, &background,
                 has_background_color ? &style->background : &DEFAULT_CLEAR);
   } else if (has_background_color) {
-    v_gfx_draw_fill_rect(gfx, &background, &style->background,
-                         vs_get_border_radius(style));
+    v_gfx_draw_fill_rect(gfx, &background, &style->background, border_radius);
   }
 
   if (vs_has_prop(style, VS_BORDER_COLOR)) {
@@ -1283,7 +1300,7 @@ static void v_node_draw_recursive(VNode* node,
     const uint16_t bl = vs_get_bl(style);
 
     v_gfx_draw_rect(gfx, &background, &style->border_color, bt, br, bb, bl,
-                    vs_get_border_radius(style));
+                    border_radius);
   }
 
   switch (node->tag) {
