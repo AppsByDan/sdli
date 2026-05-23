@@ -75,7 +75,8 @@ bool App_Init(void)
   assert(g_app.renderer == NULL);
   assert(g_app.text_engine == NULL);
 
-  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
+  // TODO: sdli can still start if some subsystems do not init
+  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) {
     SDL_Log("SDL_Init: %s", SDL_GetError());
     goto error;
   }
@@ -241,6 +242,11 @@ void App_RemoveEventListener(int event_type, EventListener listener)
       break;
     }
   }
+}
+
+void App_CopyToClipboard(const char* text)
+{
+  SDL_SetClipboardText(text);
 }
 
 //

@@ -389,7 +389,8 @@ static VNode* GamepadEvents(ControllerId controller_id, bool visible)
       VNode* button = Box({0});
 
       if (sgk != SGK_INVALID) {
-        const bool has_mapping = Controller_HasMapping(controller_id, sgk);
+        const bool has_mapping =
+            Controller_HasMappingForKey(controller_id, sgk);
         const char* text_class =
             has_mapping ? CLS_EVJ_BUTTON_TEXT : CLS_EVJ_BUTTON_TEXT_UNMAPPED;
         const char* button_class =

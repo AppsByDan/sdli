@@ -35,4 +35,6 @@ void App_AddEventListener(int event_type,
                           void* user_data);
 void App_RemoveEventListener(int event_type, EventListener listener);
 
+void App_CopyToClipboard(const char* text);
+
 #endif  // SDLI_APP_H

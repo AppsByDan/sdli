@@ -57,6 +57,7 @@ typedef struct Controller {
   SDL_Gamepad* gamepad;
 
   ControllerProperty properties[c_arraylen(JOYSTICK_PROPERTY_NAMES)];
+  const char* gamepad_mapping_csv;
 } Controller;
 
 static void Controller_drop(Controller* controller);
@@ -543,7 +544,36 @@ bool Controller_GetButtonValue(ControllerId id, StandardGamepadKey button)
          0;
 }
 
-bool Controller_HasMapping(ControllerId id, StandardGamepadKey key)
+const char* Controller_GetMappingString(ControllerId id)
+{
+  Controller* controller = GetController(id);
+
+  // If no bindings exist, SDL can return a mapping string with name, guid and
+  // platform, which is not useful for this app.
+  if (controller && controller->gamepad_bindings_count > 0) {
+    if (controller->gamepad_mapping_csv) {
+      return controller->gamepad_mapping_csv;
+    }
+
+    if (controller->gamepad) {
+      controller->gamepad_mapping_csv =
+          SDL_GetGamepadMapping(controller->gamepad);
+      return EnsureString(controller->gamepad_mapping_csv, "");
+    }
+  }
+
+  return "";
+}
+
+bool Controller_HasMapping(ControllerId id)
+{
+  Controller* controller = GetController(id);
+
+  return controller && controller->gamepad_bindings &&
+         controller->gamepad_bindings_count > 0;
+}
+
+bool Controller_HasMappingForKey(ControllerId id, StandardGamepadKey key)
 {
   // TODO: handle axis keys
   if (key >= STANDARD_GAMEPAD_BUTTON_COUNT) {
@@ -568,6 +598,12 @@ bool Controller_HasMapping(ControllerId id, StandardGamepadKey key)
   }
 
   return false;
+}
+
+void Controller_RemoveMapping(ControllerId id)
+{
+  // this call will generate a remap event that will update the controller
+  SDL_SetGamepadMapping(id, NULL);
 }
 
 const char* StandardGamepadKey_ToString(StandardGamepadKey key)
@@ -735,6 +771,7 @@ static void UpdateGamepad(Controller* controller)
   }
 
   if (gamepad == NULL) {
+    ClearGamepad(controller);
     return;
   }
 
@@ -751,7 +788,9 @@ static void UpdateGamepad(Controller* controller)
 
   cstr_assign(&controller->gamepad_name, EnsureString(gamepad_name, ""));
 
-  // TODO: probably add csv mappings to the controller
+  // mapping string is lazily loaded
+  SDL_free(controller->gamepad_mapping_csv);
+  controller->gamepad_mapping_csv = NULL;
 }
 
 static void RemoveGamepadById(ControllerId id)
@@ -769,6 +808,11 @@ static void ClearGamepad(Controller* controller)
   SDL_free(controller->gamepad_bindings);
   controller->gamepad_bindings = NULL;
   controller->gamepad_bindings_count = 0;
+
+  cstr_clear(&controller->gamepad_name);
+
+  SDL_free(controller->gamepad_mapping_csv);
+  controller->gamepad_mapping_csv = NULL;
 }
 
 static void OnAppEvent(int event_type, void* event_data, void* user_data)
@@ -793,10 +837,6 @@ static void OnAppEvent(int event_type, void* event_data, void* user_data)
                            sdl_event->jdevice.which);
       break;
     case SDL_EVENT_GAMEPAD_REMOVED:
-      RemoveGamepadById(sdl_event->gdevice.which);
-      DispatchControllerChangeEvent(sdl_event->gdevice.which,
-                                    CONTROLLER_CHANGE_INFO);
-      break;
     case SDL_EVENT_GAMEPAD_ADDED:
     case SDL_EVENT_GAMEPAD_REMAPPED: {
       UpdateGamepadById(sdl_event->gdevice.which);

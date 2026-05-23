@@ -14,12 +14,14 @@
 // private function declarations
 //
 
-static void AddControllerListItem(VNode* parent, ControllerId id);
+static VNode* ControllerListItem(ControllerId id);
 static void OnNavigatorEvent(NavigatorEvent* event);
 static void OnControllerChangeEvent(const ControllerChangeEvent* event);
 static void InfoButtonOnClick(VNode* node, VEvent* event);
 static void EventsButtonOnClick(VNode* node, VEvent* event);
 static void ConfigureButtonOnClick(VNode* node, VEvent* event);
+static void RemoveMappingButtonOnClick(VNode* node, VEvent* event);
+static void CopyMappingButtonOnClick(VNode* node, VEvent* event);
 
 //
 // public function implementation
@@ -48,7 +50,7 @@ VNode* ControllerListPage(void)
 // private function implementation
 //
 
-static void AddControllerListItem(VNode* parent, ControllerId id)
+static VNode* ControllerListItem(ControllerId id)
 {
   // TODO: create a proper controller list item widget
 
@@ -60,7 +62,7 @@ static void AddControllerListItem(VNode* parent, ControllerId id)
       // TODO: localize
       Button("Info", (void*)(uintptr_t)id, &InfoButtonOnClick),
       Button("Events", (void*)(uintptr_t)id, &EventsButtonOnClick),
-      Button("Configure", (void*)(uintptr_t)id, &ConfigureButtonOnClick),
+      Button("Configure", (void*)(uintptr_t)id, &ConfigureButtonOnClick)
     )
   });
   // clang-format on
@@ -76,7 +78,14 @@ static void AddControllerListItem(VNode* parent, ControllerId id)
   v_node_set_text_fmt(text, "%i :: %s :: %s", (int)id, Controller_GetName(id),
                       Controller_GetGUID(id));
 
-  v_node_append_child(parent, list_item);
+  if (Controller_HasMapping(id)) {
+    v_node_append_child(list_item, Button("RM", (void*)(uintptr_t)id,
+                                          &RemoveMappingButtonOnClick));
+    v_node_append_child(list_item, Button("CM", (void*)(uintptr_t)id,
+                                          &CopyMappingButtonOnClick));
+  }
+
+  return list_item;
 }
 
 static void OnNavigatorEvent(NavigatorEvent* event)
@@ -95,7 +104,7 @@ static void OnNavigatorEvent(NavigatorEvent* event)
     // TODO: show message for no controllers
 
     for (int i = 0; i < controller_count; ++i) {
-      AddControllerListItem(list, controller_ids[i]);
+      v_node_append_child(list, ControllerListItem(controller_ids[i]));
     }
 
     ControllerListModel_AddChangeEventListener(&OnControllerChangeEvent);
@@ -108,16 +117,20 @@ static void OnControllerChangeEvent(const ControllerChangeEvent* event)
 
   switch (event->change) {
     case CONTROLLER_CHANGE_ADDED:
-      AddControllerListItem(list, event->id);
+      v_node_append_child(list, ControllerListItem(event->id));
       break;
     case CONTROLLER_CHANGE_REMOVED: {
-      VNode* cell = v_get_node_by_id_fmt(CONTROLLER_ID_FMT, event->id);
-
-      v_node_remove_child(list, cell);
+      v_node_remove_child(list,
+                          v_get_node_by_id_fmt(CONTROLLER_ID_FMT, event->id));
       break;
     }
     case CONTROLLER_CHANGE_INFO: {
-      // TODO: update controller list item
+      VNode* old_list_item = v_get_node_by_id_fmt(CONTROLLER_ID_FMT, event->id);
+
+      if (old_list_item) {
+        v_node_replace_child(list, ControllerListItem(event->id),
+                             old_list_item);
+      }
       break;
     }
     // TODO: case CONTROLLER_CHANGE_POWER:
@@ -149,4 +162,17 @@ static void ConfigureButtonOnClick(VNode* node, VEvent* event)
   ControllerListModel_SelectController(
       (ControllerId)(uintptr_t)v_node_data(node));
   ScreenNavigator_Goto(SCREENID_CONTROLLER_CONFIG);
+}
+
+static void RemoveMappingButtonOnClick(VNode* node, VEvent* event)
+{
+  UNUSED(event);
+  Controller_RemoveMapping((ControllerId)(uintptr_t)v_node_data(node));
+}
+
+static void CopyMappingButtonOnClick(VNode* node, VEvent* event)
+{
+  UNUSED(event);
+  App_CopyToClipboard(
+      Controller_GetMappingString((ControllerId)(uintptr_t)v_node_data(node)));
 }
