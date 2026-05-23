@@ -13,7 +13,7 @@
 // global state
 //
 
-const zsview g_strings[1][41] = {
+const zsview g_strings[1][43] = {
   [LOCALE_EN_US] = {
     [SID_AXIS_COUNT] = zv_init("Axis Count"),
     [SID_BALL_COUNT] = zv_init("Ball Count"),
@@ -30,10 +30,12 @@ const zsview g_strings[1][41] = {
     [SID_CONTROLLER_INFO] = zv_init("Controller Info"),
     [SID_CPU_CORES] = zv_init("CPU Cores"),
     [SID_FIRMWARE_VERSION] = zv_init("Firmware Version"),
+    [SID_GAMEPAD_NAME] = zv_init("Gamepad Name"),
     [SID_GAMEPAD_TYPE] = zv_init("Gamepad Type"),
     [SID_GUID] = zv_init("GUID"),
     [SID_HAPTIC] = zv_init("Haptic"),
     [SID_INSTANCE_ID] = zv_init("Instance ID"),
+    [SID_JOYSTICK_NAME] = zv_init("Joystick Name"),
     [SID_JOYSTICK_TYPE] = zv_init("Joystick Type"),
     [SID_LEFT_JOYSTICK] = zv_init("Left Joystick"),
     [SID_LEFT_TRIGGER] = zv_init("Left Trigger"),

@@ -155,6 +155,8 @@ void ControllerListModel_RemoveChangeEventListener(
  */
 
 const char* Controller_GetName(ControllerId id);
+const char* Controller_GetJoystickName(ControllerId id);
+const char* Controller_GetGamepadName(ControllerId id);
 const char* Controller_GetGUID(ControllerId id);
 const char* Controller_GetPath(ControllerId id);
 const char* Controller_GetJoystickType(ControllerId id);

@@ -14,6 +14,8 @@
 
 #define NID_INSTANCE_ID "ci:iid"
 #define NID_GUID "ci:guid"
+#define NID_GAMEPAD_NAME "ci:gname"
+#define NID_JOYSTICK_NAME "ci:jname"
 #define NID_POWER_STATE "ci:power"
 #define NID_BATTERY "ci:battery"
 #define NID_JOYSTICK_TYPE "ci:jtype"
@@ -64,6 +66,8 @@ VNode* ControllerInfoPage(void)
             Children(
               KeyValueListItem(STR(SID_INSTANCE_ID), NID_INSTANCE_ID),
               KeyValueListItem(STR(SID_GUID), NID_GUID),
+              KeyValueListItem(STR(SID_JOYSTICK_NAME), NID_JOYSTICK_NAME),
+              KeyValueListItem(STR(SID_GAMEPAD_NAME), NID_GAMEPAD_NAME),
               KeyValueListItem(STR(SID_POWER_STATE), NID_POWER_STATE),
               KeyValueListItem(STR(SID_BATTERY), NID_BATTERY),
               KeyValueListItem(STR(SID_JOYSTICK_TYPE), NID_JOYSTICK_TYPE),
@@ -129,6 +133,8 @@ static void OnNavigatorEvent(NavigatorEvent* event)
     BindU32(NID_INSTANCE_ID, controller_id);
     BindString(NID_GUID, Controller_GetGUID(controller_id));
     BindString(NID_POWER_STATE, Controller_GetPowerState(controller_id));
+    BindString(NID_GAMEPAD_NAME, Controller_GetGamepadName(controller_id));
+    BindString(NID_JOYSTICK_NAME, Controller_GetJoystickName(controller_id));
     BindInt(NID_BATTERY, Controller_GetBatteryLevel(controller_id));
     BindString(NID_JOYSTICK_TYPE, Controller_GetJoystickType(controller_id));
     BindString(NID_GAMEPAD_TYPE, Controller_GetGamepadType(controller_id));

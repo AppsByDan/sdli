@@ -273,6 +273,18 @@ const char* Controller_GetName(ControllerId id)
   return "";
 }
 
+const char* Controller_GetJoystickName(ControllerId id)
+{
+  Controller* controller = GetController(id);
+  return controller ? cstr_str(&controller->joystick_name) : "";
+}
+
+const char* Controller_GetGamepadName(ControllerId id)
+{
+  Controller* controller = GetController(id);
+  return controller ? cstr_str(&controller->gamepad_name) : "";
+}
+
 const char* Controller_GetGUID(ControllerId id)
 {
   Controller* controller = GetController(id);
