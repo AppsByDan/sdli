@@ -6,6 +6,8 @@
 #include <sdli/util.h>
 #include <sdli/widget/widget.h>
 
+#include <stc/cstr.h>
+
 //
 // constants
 //
@@ -30,6 +32,7 @@
 #define NID_BALL_COUNT "ci:balls"
 #define NID_TOUCHPAD_COUNT "ci:tpads"
 #define NID_STEAM_ID "ci:steam"
+#define NID_PROPERTY_FMT "ci:prop:%i"
 
 //
 // private function declarations
@@ -94,13 +97,17 @@ VNode* ControllerInfoPage(void)
 
   for (int i = 0; i < property_count; ++i) {
     const char* property_name = property_names[i];
+    VNode* kv_list_item;
+
     if (i == property_count - 1) {
-      v_node_append_child(properties_list,
-                          KeyValueListItemLast(property_name, property_name));
+      kv_list_item = KeyValueListItemLast(property_name, property_name);
     } else {
-      v_node_append_child(properties_list,
-                          KeyValueListItem(property_name, property_name));
+      kv_list_item = KeyValueListItem(property_name, property_name);
     }
+
+    v_node_set_id_fmt(KeyValueListItem_GetValue(kv_list_item), NID_PROPERTY_FMT,
+                      i);
+    v_node_append_child(properties_list, kv_list_item);
   }
 
   return Navigable_Init(page, &OnNavigatorEvent);
@@ -145,10 +152,18 @@ static void OnNavigatorEvent(NavigatorEvent* event)
     const ControllerProperty* properties =
         Controller_GetProperties(controller_id, &property_count);
 
+    cstr temp = cstr_init();
+
     for (int i = 0; i < property_count; ++i) {
       const ControllerProperty* property = &properties[i];
-      BindBool(property->name, property->value);
+
+      cstr_clear(&temp);
+      cstr_append_fmt(&temp, NID_PROPERTY_FMT, i);
+
+      BindBool(cstr_str(&temp), property->value);
     }
+
+    cstr_drop(&temp);
   }
 }
 

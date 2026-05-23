@@ -927,6 +927,7 @@ static void UpdateProperties(Controller* controller)
   int property_count = (int)c_arraylen(controller->properties);
 
   for (int i = 0; i < property_count; ++i) {
+    controller->properties[i].name = JOYSTICK_PROPERTY_NAMES[i];
     controller->properties[i].value = SDL_GetBooleanProperty(
         joystick_properties, controller->properties[i].name, false);
   }

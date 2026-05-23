@@ -25,6 +25,11 @@ VNode* KeyValueListItemLast(const char* key_name, const char* value_id)
   return KeyValueListItemImpl(key_name, value_id, true);
 }
 
+VNode* KeyValueListItem_GetValue(VNode* kv_list_item)
+{
+  return v_node_child_at(kv_list_item, 1);
+}
+
 //
 // private function implementation
 //
