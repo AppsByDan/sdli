@@ -45,12 +45,10 @@ void LoadStyleSheet(void)
     vs_set_yalign(S, V_ALIGN_Y_CENTER);
   }
 
-  vss_with(S, CLS_PAGE)
+  vss_extend(S, CLS_PAGE, CLS_FILL)
   {
-    vs_set_width(S, V_GROW());
-    vs_set_height(S, V_GROW());
     vs_set_direction(S, V_DIRECTION_COLUMN);
-    vs_set_padding(S, THEME_SP_MD, THEME_SP_MD, THEME_SP_MD, THEME_SP_MD);
+    vs_set_padding_all(S, THEME_SP_MD);
   }
 
   vss_with(S, CLS_PAGE_H1)
@@ -94,32 +92,26 @@ void LoadStyleSheet(void)
   vss_with(S, CLS_LIST)
   {
     vs_set_direction(S, V_DIRECTION_COLUMN);
-    vs_set_padding(S, THEME_SP_MD, THEME_SP_MD, THEME_SP_MD, THEME_SP_MD);
+    vs_set_padding_all(S, THEME_SP_MD);
     vs_set_width(S, V_GROW());
     vs_set_border_radius(S, THEME_BUTTON_CORNER_RADIUS);
-    vs_set_border_top(S, THEME_BORDER);
-    vs_set_border_bottom(S, THEME_BORDER);
-    vs_set_border_right(S, THEME_BORDER);
-    vs_set_border_left(S, THEME_BORDER);
-    vs_set_border_color(S, v_rgb(0x44, 0x44, 0x44));
+    vs_set_border_all(S, THEME_BORDER);
+    vs_set_border_color(S, THEME_LIST_BORDER_COLOR);
   }
 
   vss_with(S, CLS_LIST_ITEM)
   {
     vs_set_direction(S, V_DIRECTION_ROW);
     vs_set_width(S, V_GROW());
-    vs_set_padding_top(S, THEME_SP_SM);
-    vs_set_padding_bottom(S, THEME_SP_SM);
+    vs_set_padding(S, THEME_SP_SM, 0, THEME_SP_SM, 0);
     vs_set_border_bottom(S, THEME_BORDER);
-    vs_set_border_color(S, v_rgb(0x44, 0x44, 0x44));
+    vs_set_border_color(S, THEME_LIST_BORDER_COLOR);
   }
 
-  vss_with(S, CLS_LIST_ITEM_LAST)
+  vss_extend(S, CLS_LIST_ITEM_LAST, CLS_LIST_ITEM)
   {
-    vs_set_direction(S, V_DIRECTION_ROW);
-    vs_set_width(S, V_GROW());
-    vs_set_padding_top(S, THEME_SP_SM);
-    vs_set_padding_bottom(S, THEME_SP_SM);
+    vs_unset_border_bottom(S);
+    vs_unset_border_color(S);
   }
 
   vss_with(S, CLS_LIST_ITEM_KEY_TEXT)

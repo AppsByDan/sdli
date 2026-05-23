@@ -23,6 +23,8 @@
 #define THEME_HIGHLIGHT_1 ((VColor){0x3D, 0x44, 0x50, 0xFF})
 #define THEME_BUTTON_COLOR ((VColor){0x29, 0x2E, 0x36, 0xFF})
 #define THEME_APP_TITLE_COLOR ((VColor){0x1A, 0x9F, 0xFF, 0xFF})
+#define THEME_UNMAPPED_COLOR ((VColor){0x59, 0x5E, 0x66, 0xFF})
+#define THEME_LIST_BORDER_COLOR ((VColor){0x44, 0x44, 0x44, 0xFF})
 
 #define THEME_SP_2XS (5)
 #define THEME_SP_XS (8)
@@ -31,8 +33,11 @@
 #define THEME_SP_LG (30)
 
 #define THEME_BORDER (1)
+#define THEME_EVENT_BUTTON_BORDER (2)
 #define THEME_BUTTON_CORNER_RADIUS (4)
 #define THEME_SCROLLBAR_WIDTH (14)
+#define THEME_GAMEPAD_BUTTON_HEIGHT (42)
+#define THEME_JOYSTICK_BUTTON_SIZE (48)
 
 #define CLS_FILL "fill"
 #define CLS_TEXT "text"

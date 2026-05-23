@@ -52,4 +52,14 @@ static inline bool NodeIdEq(VNode* node, const char* id)
   return strcmp(v_node_id(node), id) == 0;
 }
 
+static inline void vs_set_border_all(VStyle* style, uint16_t value)
+{
+  vs_set_border(style, value, value, value, value);
+}
+
+static inline void vs_set_padding_all(VStyle* style, uint16_t value)
+{
+  vs_set_padding(style, value, value, value, value);
+}
+
 #endif  // SDLI_UTIL_H

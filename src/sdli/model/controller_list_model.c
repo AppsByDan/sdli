@@ -24,6 +24,8 @@
                                                 : DEFAULT;                 \
   } while (0)
 
+#define JOYSTICK_DEADZONE (SDL_JOYSTICK_AXIS_MAX / 32)
+
 static const char* JOYSTICK_PROPERTY_NAMES[] = {
     // clang-format off
     SDL_PROP_JOYSTICK_CAP_MONO_LED_BOOLEAN,
@@ -529,6 +531,33 @@ bool Controller_GetButtonValue(ControllerId id, StandardGamepadKey button)
          0;
 }
 
+bool Controller_HasMapping(ControllerId id, StandardGamepadKey key)
+{
+  // TODO: handle axis keys
+  if (key >= STANDARD_GAMEPAD_BUTTON_COUNT) {
+    return false;
+  }
+
+  Controller* controller = GetController(id);
+
+  if (!controller) {
+    return false;
+  }
+
+  // linear search is fine since the number of bindings is small
+  // (typically 20-30)
+  for (int i = 0; i < controller->gamepad_bindings_count; i++) {
+    SDL_GamepadBinding* binding = controller->gamepad_bindings[i];
+
+    if (binding->output_type == SDL_GAMEPAD_BINDTYPE_BUTTON &&
+        (int)binding->output.button == (int)key) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 const char* StandardGamepadKey_ToString(StandardGamepadKey key)
 {
   switch (key) {
@@ -703,6 +732,7 @@ static void UpdateGamepad(Controller* controller)
 
   if (controller->gamepad_bindings_count == 0) {
     ClearGamepad(controller);
+    return;
   }
 
   const char* gamepad_name = SDL_GetGamepadName(gamepad);
@@ -904,8 +934,12 @@ static void UpdateProperties(Controller* controller)
 
 static float JoystickAxisToFloat(Sint16 value)
 {
-  // TODO: consider dead zone?
-  return value >= 0 ? (float)value / 32767.f : ((float)value / -32768.f) * -1.f;
+  if (value < JOYSTICK_DEADZONE && value > -JOYSTICK_DEADZONE) {
+    return 0;
+  }
+
+  return value >= 0 ? (float)value / (float)SDL_JOYSTICK_AXIS_MAX
+                    : ((float)value / (float)SDL_JOYSTICK_AXIS_MIN) * -1.0f;
 }
 
 static void DispatchControllerChangeEvent(ControllerId id,

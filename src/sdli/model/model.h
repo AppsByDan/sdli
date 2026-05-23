@@ -182,6 +182,7 @@ uint8_t Controller_GetJoystickHatValue(ControllerId id, int hat);
 bool Controller_GetJoystickButtonValue(ControllerId id, int button);
 float Controller_GetAxisValue(ControllerId id, StandardGamepadKey axis);
 bool Controller_GetButtonValue(ControllerId id, StandardGamepadKey button);
+bool Controller_HasMapping(ControllerId id, StandardGamepadKey key);
 
 const char* StandardGamepadKey_ToString(StandardGamepadKey key);
 
