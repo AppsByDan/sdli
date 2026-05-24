@@ -96,6 +96,7 @@ add_library(${SDLI_LIB}
   "src/sdli/strings.c"
   "src/sdli/style.c"
   "src/sdli/util.c"
+  "src/sdli/model/controller_input_model.c"
   "src/sdli/model/controller_list_model.c"
   "src/sdli/model/system_model.c"
   "src/sdli/page/controller_info_page.c"

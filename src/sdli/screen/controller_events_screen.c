@@ -321,8 +321,7 @@ static void SetControllerApi(VNode* toggle, ControllerApi new_api)
   v_node_set_visible(v_get_node_by_id(NID_GAMEPAD_API), gamepad_visible);
   v_node_set_visible(v_get_node_by_id(NID_JOYSTICK_API), joystick_visible);
   v_node_set_data(toggle, (void*)(intptr_t)new_api);
-  ControllerListModel_EnableControllerInputEvents(controller_id, new_api,
-                                                  event_handler);
+  ControllerInputModel_Enable(controller_id, new_api, event_handler);
 }
 
 static VNode* JoystickEvents(ControllerId controller_id, bool visible)

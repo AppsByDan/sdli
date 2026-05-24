@@ -159,12 +159,6 @@ void SystemModel_CopyToClipboard(const char* text);
 void ControllerListModel_Init(void);
 void ControllerListModel_Drop(void);
 ControllerId* ControllerListModel_SortControllers(int* out_count);
-void ControllerListModel_SelectController(ControllerId id);
-void ControllerListModel_EnableControllerInputEvents(
-    ControllerId controller_id,
-    ControllerApi api,
-    ControllerInputEventListener listener);
-void ControllerListModel_DisableControllerEvents(void);
 void ControllerListModel_AddChangeEventListener(
     ControllerChangeEventListener listener);
 void ControllerListModel_RemoveChangeEventListener(
@@ -218,7 +212,26 @@ void Controller_Rumble(ControllerId id);
 
 int Controller_GetPropertyCount(void);
 const char* Controller_GetPropertyName(int property_index);
+float Controller_JoystickAxisToFloat(int16_t value);
 
 const char* StandardGamepadKey_ToString(StandardGamepadKey key);
+
+/*
+ * ControllerInputModel manages controller input events for a single controller.
+ * Event categories are Gamepad Events, Joystick Events or Mapper Events. Mapper
+ * Events are for controller configuration mode where the model detects
+ * deliberate press + release and creates a Gamepad mapping csv compatible
+ * binding string.
+ */
+
+void ControllerInputModel_Init(void);
+void ControllerInputModel_Drop(void);
+
+/* Start listening for controller input events. */
+void ControllerInputModel_Enable(ControllerId controller_id,
+                                 ControllerApi api,
+                                 ControllerInputEventListener listener);
+/* Stop listening for controller input events. */
+void ControllerInputModel_Disable(void);
 
 #endif  // SDLI_MODEL_H

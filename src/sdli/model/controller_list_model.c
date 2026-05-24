@@ -156,8 +156,6 @@ static void Controller_drop(Controller* controller);
 typedef struct ControllerListModel {
   controller_map controllers;
   vec_controller_id sorted_controller_ids;
-  ControllerId selected_controller; /* TODO: remove this */
-  ControllerInputEventListener input_event_listener;
   ControllerChangeEventListener change_listeners[8];
 } ControllerListModel;
 
@@ -173,16 +171,9 @@ static void UpdateGamepad(Controller* controller);
 static void ClearGamepad(Controller* controller);
 static void ParseGamepadMapping(Controller* controller);
 static void OnAppEvent(int event_type, void* event_data, void* user_data);
-static void OnJoystickInputEvents(int event_type,
-                                  void* event_data,
-                                  void* user_data);
-static void OnGamepadInputEvents(int event_type,
-                                 void* event_data,
-                                 void* user_data);
 static void UpdateGUID(Controller* controller);
 static void UpdateJoystickName(Controller* controller);
 static void UpdateProperties(Controller* controller);
-static float JoystickAxisToFloat(Sint16 value);
 static void DispatchControllerChangeEvent(ControllerId id,
                                           ControllerChange change);
 static bool ReadString(csview* src, csview* out, int ch);
@@ -252,57 +243,6 @@ ControllerId* ControllerListModel_SortControllers(int* out_count)
   *out_count = (int)ids->size;
 
   return ids->data;
-}
-
-void ControllerListModel_SelectController(ControllerId id)
-{
-  g_controller_list_model.selected_controller = id;
-}
-
-void ControllerListModel_EnableControllerInputEvents(
-    ControllerId controller_id,
-    ControllerApi api,
-    ControllerInputEventListener listener)
-{
-  ControllerListModel_DisableControllerEvents();
-
-  g_controller_list_model.selected_controller = controller_id;
-
-  if (api == CONTROLLER_API_JOYSTICK) {
-    App_AddEventListener(SDL_EVENT_JOYSTICK_BUTTON_DOWN, &OnJoystickInputEvents,
-                         NULL);
-    App_AddEventListener(SDL_EVENT_JOYSTICK_BUTTON_UP, &OnJoystickInputEvents,
-                         NULL);
-    App_AddEventListener(SDL_EVENT_JOYSTICK_AXIS_MOTION, &OnJoystickInputEvents,
-                         NULL);
-    App_AddEventListener(SDL_EVENT_JOYSTICK_HAT_MOTION, &OnJoystickInputEvents,
-                         NULL);
-  } else if (api == CONTROLLER_API_GAMEPAD) {
-    App_AddEventListener(SDL_EVENT_GAMEPAD_BUTTON_DOWN, &OnGamepadInputEvents,
-                         NULL);
-    App_AddEventListener(SDL_EVENT_GAMEPAD_BUTTON_UP, &OnGamepadInputEvents,
-                         NULL);
-    App_AddEventListener(SDL_EVENT_GAMEPAD_AXIS_MOTION, &OnGamepadInputEvents,
-                         NULL);
-  } else {
-    return;
-  }
-
-  g_controller_list_model.input_event_listener = listener;
-}
-
-void ControllerListModel_DisableControllerEvents(void)
-{
-  App_RemoveEventListener(SDL_EVENT_JOYSTICK_BUTTON_DOWN,
-                          &OnJoystickInputEvents);
-  App_RemoveEventListener(SDL_EVENT_JOYSTICK_BUTTON_UP, &OnJoystickInputEvents);
-  App_RemoveEventListener(SDL_EVENT_JOYSTICK_AXIS_MOTION,
-                          &OnJoystickInputEvents);
-  App_RemoveEventListener(SDL_EVENT_GAMEPAD_BUTTON_DOWN, &OnGamepadInputEvents);
-  App_RemoveEventListener(SDL_EVENT_GAMEPAD_BUTTON_UP, &OnGamepadInputEvents);
-  App_RemoveEventListener(SDL_EVENT_GAMEPAD_AXIS_MOTION, &OnGamepadInputEvents);
-
-  g_controller_list_model.selected_controller = 0;
 }
 
 void ControllerListModel_AddChangeEventListener(
@@ -659,7 +599,7 @@ float Controller_GetJoystickAxisValue(ControllerId id, int axis)
     value = SDL_GetJoystickAxis(controller->joystick, axis);
   }
 
-  return JoystickAxisToFloat(value);
+  return Controller_JoystickAxisToFloat(value);
 }
 
 uint8_t Controller_GetJoystickHatValue(ControllerId id, int hat)
@@ -695,7 +635,7 @@ float Controller_GetAxisValue(ControllerId id, StandardGamepadKey axis)
     return 0;
   }
 
-  return JoystickAxisToFloat(SDL_GetGamepadAxis(
+  return Controller_JoystickAxisToFloat(SDL_GetGamepadAxis(
       controller->gamepad, axis - STANDARD_GAMEPAD_KEY_AXIS_OFFSET));
 }
 
@@ -783,6 +723,16 @@ void Controller_Rumble(ControllerId id)
       SLogCallErrorWithU64("SDL_RumbleJoystick", (uint64_t)controller->id);
     }
   }
+}
+
+float Controller_JoystickAxisToFloat(int16_t value)
+{
+  if (value < JOYSTICK_DEADZONE && value > -JOYSTICK_DEADZONE) {
+    return 0;
+  }
+
+  return value >= 0 ? (float)value / (float)SDL_JOYSTICK_AXIS_MAX
+                    : ((float)value / (float)SDL_JOYSTICK_AXIS_MIN) * -1.0f;
 }
 
 const char* StandardGamepadKey_ToString(StandardGamepadKey key)
@@ -1151,93 +1101,6 @@ static void OnAppEvent(int event_type, void* event_data, void* user_data)
   }
 }
 
-static void OnJoystickInputEvents(int event_type,
-                                  void* event_data,
-                                  void* user_data)
-{
-  UNUSED(user_data);
-  SDL_Event* sdl_event = event_data;
-  ControllerInputEvent input_event = {
-      .api = CONTROLLER_API_JOYSTICK,
-  };
-
-  switch (event_type) {
-    case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
-    case SDL_EVENT_JOYSTICK_BUTTON_UP:
-      if (g_controller_list_model.selected_controller !=
-          sdl_event->jbutton.which) {
-        return;
-      }
-      input_event.type = CONTROLLER_INPUT_BUTTON;
-      input_event.u.button.id = sdl_event->jbutton.button;
-      input_event.u.button.pressed =
-          (event_type == SDL_EVENT_JOYSTICK_BUTTON_DOWN);
-
-      break;
-    case SDL_EVENT_JOYSTICK_AXIS_MOTION:
-      if (g_controller_list_model.selected_controller !=
-          sdl_event->jaxis.which) {
-        return;
-      }
-      input_event.type = CONTROLLER_INPUT_AXIS;
-      input_event.u.axis.id = sdl_event->jaxis.axis;
-      input_event.u.axis.value = JoystickAxisToFloat(sdl_event->jaxis.value);
-      break;
-    case SDL_EVENT_JOYSTICK_HAT_MOTION:
-      if (g_controller_list_model.selected_controller !=
-          sdl_event->jhat.which) {
-        return;
-      }
-      input_event.type = CONTROLLER_INPUT_HAT;
-      input_event.u.hat.id = sdl_event->jhat.hat;
-      input_event.u.hat.value = sdl_event->jhat.value;
-      break;
-    default:
-      return;
-  }
-
-  g_controller_list_model.input_event_listener(&input_event);
-}
-
-static void OnGamepadInputEvents(int event_type,
-                                 void* event_data,
-                                 void* user_data)
-{
-  UNUSED(user_data);
-  SDL_Event* sdl_event = event_data;
-  ControllerInputEvent input_event = {
-      .api = CONTROLLER_API_GAMEPAD,
-  };
-
-  switch (event_type) {
-    case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-    case SDL_EVENT_GAMEPAD_BUTTON_UP:
-      if (g_controller_list_model.selected_controller !=
-          sdl_event->gbutton.which) {
-        return;
-      }
-      input_event.type = CONTROLLER_INPUT_BUTTON;
-      input_event.u.button.id = sdl_event->gbutton.button;
-      input_event.u.button.pressed =
-          (event_type == SDL_EVENT_GAMEPAD_BUTTON_DOWN);
-      break;
-    case SDL_EVENT_GAMEPAD_AXIS_MOTION:
-      if (g_controller_list_model.selected_controller !=
-          sdl_event->gaxis.which) {
-        return;
-      }
-      input_event.type = CONTROLLER_INPUT_AXIS;
-      input_event.u.axis.id =
-          sdl_event->gaxis.axis + STANDARD_GAMEPAD_KEY_AXIS_OFFSET;
-      input_event.u.axis.value = JoystickAxisToFloat(sdl_event->gaxis.value);
-      break;
-    default:
-      return;
-  }
-
-  g_controller_list_model.input_event_listener(&input_event);
-}
-
 static void UpdateGUID(Controller* controller)
 {
   if (!controller) {
@@ -1275,16 +1138,6 @@ static void UpdateProperties(Controller* controller)
 
   controller->has_rumble = SDL_GetBooleanProperty(
       joystick_properties, SDL_PROP_JOYSTICK_CAP_RUMBLE_BOOLEAN, false);
-}
-
-static float JoystickAxisToFloat(Sint16 value)
-{
-  if (value < JOYSTICK_DEADZONE && value > -JOYSTICK_DEADZONE) {
-    return 0;
-  }
-
-  return value >= 0 ? (float)value / (float)SDL_JOYSTICK_AXIS_MAX
-                    : ((float)value / (float)SDL_JOYSTICK_AXIS_MIN) * -1.0f;
 }
 
 static void DispatchControllerChangeEvent(ControllerId id,
