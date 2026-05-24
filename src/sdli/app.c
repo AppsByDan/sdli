@@ -73,10 +73,25 @@ bool App_Init(void)
   assert(g_app.renderer == NULL);
   assert(g_app.text_engine == NULL);
 
-  // TODO: sdli can still start if some subsystems do not init
-  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) {
-    SDL_Log("SDL_Init: %s", SDL_GetError());
+  SLog("%s", FN_NAME);
+
+  if (!SDL_Init(SDL_INIT_VIDEO)) {
+    SLogCallError("SDL_Init(SDL_INIT_VIDEO)");
     goto error;
+  }
+
+  // allow app to continue if these subsystems fail
+
+  if (SDL_Init(SDL_INIT_JOYSTICK)) {
+    if (!SDL_Init(SDL_INIT_GAMEPAD)) {
+      SLogCallError("SDL_Init(SDL_INIT_GAMEPAD)");
+    }
+  } else {
+    SLogCallError("SDL_Init(SDL_INIT_JOYSTICK)");
+  }
+
+  if (!SDL_Init(SDL_INIT_HAPTIC)) {
+    SLogCallError("SDL_Init(SDL_INIT_HAPTIC)");
   }
 
   g_app.window = SCreateWindow("SDL Insight", 1280, 720);
@@ -108,11 +123,14 @@ bool App_Init(void)
   TextureCache_Init(g_app.renderer);
 
   if (!v_init(&config)) {
+    SLog("ERROR: v_init() failed");
     goto error;
   }
 
   SDL_ShowWindow(g_app.window);
   g_app.is_running = true;
+
+  SLog("%s: success", FN_NAME);
 
   return true;
 
@@ -123,6 +141,8 @@ error:
 
 void App_Shutdown(void)
 {
+  SLog("%s", FN_NAME);
+
   v_quit();
 
   TextureCache_Drop();
@@ -256,7 +276,7 @@ static SDL_Window* SCreateWindow(const char* title, int width, int height)
   SDL_PropertiesID properties = SDL_CreateProperties();
 
   if (properties == 0) {
-    SDL_Log("SDL_CreateProperties: %s", SDL_GetError());
+    SLogCallError("SDL_CreateProperties");
     return NULL;
   }
 
@@ -274,7 +294,7 @@ static SDL_Window* SCreateWindow(const char* title, int width, int height)
   SDL_Window* result = SDL_CreateWindowWithProperties(properties);
 
   if (!result) {
-    SDL_Log("CreateWindowWithProperties: %s", SDL_GetError());
+    SLogCallError("SDL_CreateWindowWithProperties");
   }
 
   SDL_DestroyProperties(properties);
@@ -287,7 +307,7 @@ static SDL_Renderer* SCreateRenderer(SDL_Window* window)
   SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
   if (!renderer) {
-    SDL_Log("SDL_CreateRenderer: %s", SDL_GetError());
+    SLogCallError("SDL_CreateRenderer");
     return NULL;
   }
 
@@ -301,14 +321,14 @@ static SDL_Renderer* SCreateRenderer(SDL_Window* window)
 static TTF_TextEngine* SCreateTextEngine(SDL_Renderer* renderer)
 {
   if (!TTF_Init()) {
-    SDL_Log("TTF_Init: %s", SDL_GetError());
+    SLogCallError("TTF_Init");
     return NULL;
   }
 
   TTF_TextEngine* text_engine = TTF_CreateRendererTextEngine(renderer);
 
   if (!text_engine) {
-    SDL_Log("TTF_CreateRendererTextEngine: %s", SDL_GetError());
+    SLogCallError("TTF_CreateRendererTextEngine");
   }
 
   return text_engine;

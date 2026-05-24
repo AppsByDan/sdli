@@ -11,6 +11,16 @@
 // macros & constants
 //
 
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#define FN_NAME __func__
+#elif defined(_MSC_VER)
+#define FN_NAME __FUNCTION__
+#elif defined(__GNUC__)
+#define FN_NAME __FUNCTION__
+#else
+#define FN_NAME "unknown_function"
+#endif
+
 #define UNUSED_4(arg, ...) (void)arg
 #define UNUSED_3(arg, ...) (void)arg, UNUSED_4(__VA_ARGS__, 0)
 #define UNUSED_2(arg, ...) (void)arg, UNUSED_3(__VA_ARGS__, 0)
@@ -37,6 +47,12 @@ void BindU32(const char* id, uint32_t val);
 void BindU64(const char* id, uint64_t val);
 void BindBool(const char* id, bool val);
 void BindFloat(const char* id, float val, int digits);
+
+void SLog(const char* fmt, ...) VUID_GNUATTR(format(printf, 1, 2));
+const char* SGetError(void);
+void SLogCallError(const char* func_name);
+void SLogCallErrorWithU64(const char* func_name, uint64_t value);
+void SLogEvent(void* sdl_event);
 
 // Helper to deal with SDL functions that return a NULL cstring.
 static inline const char* EnsureString(const char* str, const char* default_str)

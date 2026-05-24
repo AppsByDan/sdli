@@ -201,6 +201,8 @@ static ControllerListModel g_controller_list_model = {0};
 
 void ControllerListModel_Init(void)
 {
+  SLog("%s", FN_NAME);
+
   g_controller_list_model = (ControllerListModel){
       .controllers = controller_map_init(),
   };
@@ -209,7 +211,6 @@ void ControllerListModel_Init(void)
   SDL_JoystickID* joysticks = SDL_GetJoysticks(&count);
 
   for (int i = 0; i < count; ++i) {
-    // TODO: print warning if AddController fails
     AddController(joysticks[i]);
   }
 
@@ -223,10 +224,14 @@ void ControllerListModel_Init(void)
   App_AddEventListener(SDL_EVENT_JOYSTICK_BATTERY_UPDATED, &OnAppEvent, NULL);
   App_AddEventListener(SDL_EVENT_GAMEPAD_STEAM_HANDLE_UPDATED, &OnAppEvent,
                        NULL);
+
+  SLog("%s: success", FN_NAME);
 }
 
 void ControllerListModel_Drop(void)
 {
+  SLog("%s", FN_NAME);
+
   controller_map_drop(&g_controller_list_model.controllers);
   g_controller_list_model = (ControllerListModel){0};
 }
@@ -337,7 +342,9 @@ void ControllerListModel_RemoveChangeEventListener(
 
 void ControllerListModel_ReloadMappings(void)
 {
-  SDL_ReloadGamepadMappings();
+  if (!SDL_ReloadGamepadMappings()) {
+    SLogCallError("SDL_ReloadGamepadMappings");
+  }
 }
 
 int ControllerListModel_LoadMappingsFromClipboard(void)
@@ -351,11 +358,16 @@ int ControllerListModel_LoadMappingsFromClipboard(void)
   SDL_IOStream* src = SDL_IOFromConstMem(mappings, SDL_strlen(mappings));
 
   if (!src) {
+    SLogCallError("SDL_IOFromConstMem");
     SDL_free(mappings);
     return -1;
   }
 
   const int result = SDL_AddGamepadMappingsFromIO(src, true);
+
+  if (!result) {
+    SLogCallError("SDL_AddGamepadMappingsFromIO");
+  }
 
   SDL_free(mappings);
 
@@ -376,7 +388,10 @@ void ControllerListModel_ExportMappingsToClipboard(void)
     }
   }
 
-  SDL_SetClipboardText(cstr_str(&builder));
+  if (!SDL_SetClipboardText(cstr_str(&builder))) {
+    SLogCallError("SDL_SetClipboardText");
+  }
+
   cstr_drop(&builder);
 }
 
@@ -756,7 +771,9 @@ bool Controller_HasRumble(ControllerId id)
 void Controller_RemoveMapping(ControllerId id)
 {
   // this call will generate a remap event that will update the controller
-  SDL_SetGamepadMapping(id, NULL);
+  if (!SDL_SetGamepadMapping(id, NULL)) {
+    SLogCallErrorWithU64("SDL_SetGamepadMapping[Remove]", (uint64_t)id);
+  }
 }
 
 void Controller_Rumble(ControllerId id)
@@ -764,7 +781,10 @@ void Controller_Rumble(ControllerId id)
   Controller* controller = GetController(id);
 
   if (controller && controller->has_rumble) {
-    SDL_RumbleJoystick(controller->joystick, 0xFFFF / 2, 0xFFFF / 2, 300);
+    if (!SDL_RumbleJoystick(controller->joystick, 0xFFFF / 2, 0xFFFF / 2,
+                            300)) {
+      SLogCallErrorWithU64("SDL_RumbleJoystick", (uint64_t)controller->id);
+    }
   }
 }
 
@@ -846,6 +866,8 @@ const char* StandardGamepadKey_ToString(StandardGamepadKey key)
 
 void Controller_drop(Controller* controller)
 {
+  SLog("%s(%" PRIu32 ")", FN_NAME, controller->id);
+
   ClearGamepad(controller);
 
   cstr_drop(&controller->joystick_name);
@@ -867,12 +889,16 @@ static Controller* GetController(ControllerId id)
 static bool AddController(SDL_JoystickID id)
 {
   if (controller_map_contains(&g_controller_list_model.controllers, id)) {
+    SLog("%s(%" PRIu32 "): already exists", FN_NAME, id);
     return false;
   }
+
+  SLog("%s(%" PRIu32 ")", FN_NAME, id);
 
   SDL_Joystick* joystick = SDL_OpenJoystick(id);
 
   if (!joystick) {
+    SLogCallError("SDL_OpenJoystick");
     return false;
   }
 
@@ -890,6 +916,9 @@ static bool AddController(SDL_JoystickID id)
   // note controller drop'd on failed insert
   controller_map_result result = controller_map_insert(
       &g_controller_list_model.controllers, id, controller);
+
+  SLog("%s(%" PRIu32 "): %s", FN_NAME, id,
+       result.inserted ? "success" : "failed");
 
   return result.inserted;
 }
@@ -930,6 +959,11 @@ static void UpdateGamepad(Controller* controller)
 
   if (gamepad == NULL && SDL_IsGamepad(controller->id)) {
     gamepad = SDL_OpenGamepad(controller->id);
+
+    if (!gamepad) {
+      SLogCallErrorWithU64("SDL_OpenGamepad", (uint64_t)controller->id);
+    }
+
     controller->gamepad = gamepad;
   }
 
@@ -1060,14 +1094,15 @@ error:
 static void OnAppEvent(int event_type, void* event_data, void* user_data)
 {
   UNUSED(user_data);
+  SLogEvent(event_data);
+
   SDL_Event* sdl_event = event_data;
 
   switch (event_type) {
     case SDL_EVENT_JOYSTICK_ADDED: {
       ControllerId id = sdl_event->jdevice.which;
 
-      if (!controller_map_contains(&g_controller_list_model.controllers, id)) {
-        AddController(id);
+      if (AddController(id)) {
         DispatchControllerChangeEvent(id, CONTROLLER_CHANGE_ADDED);
       }
       break;

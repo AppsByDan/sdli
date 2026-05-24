@@ -41,6 +41,8 @@ static SystemModel g_system_model = {0};
 
 void SystemModel_Init(void)
 {
+  SLog("%s", FN_NAME);
+
   cstr_append_fmt(&g_system_model.sdl_version, "%i.%i.%i", SDL_MAJOR_VERSION,
                   SDL_MINOR_VERSION, SDL_MICRO_VERSION);
 
@@ -50,10 +52,14 @@ void SystemModel_Init(void)
   App_AddEventListener(SDL_EVENT_SYSTEM_THEME_CHANGED, OnSystemThemeChanged,
                        NULL);
   App_AddEventListener(EVT_BEFORE_PROCESS_EVENTS, OnBeforeEvents, NULL);
+
+  SLog("%s: success", FN_NAME);
 }
 
 void SystemModel_Drop(void)
 {
+  SLog("%s", FN_NAME);
+
   cstr_drop(&g_system_model.sdl_version);
   g_system_model = (SystemModel){0};
 }
@@ -131,7 +137,9 @@ static void OnSystemThemeChanged(int event_type,
                                  void* event_data,
                                  void* user_data)
 {
-  UNUSED(event_type, event_data, user_data);
+  UNUSED(event_type, user_data);
+  SLogEvent(event_data);
+
   SDL_SystemTheme theme = SDL_GetSystemTheme();
 
   if (theme != g_system_model.theme) {
