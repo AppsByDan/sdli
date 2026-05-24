@@ -388,10 +388,7 @@ void ControllerListModel_ExportMappingsToClipboard(void)
     }
   }
 
-  if (!SDL_SetClipboardText(cstr_str(&builder))) {
-    SLogCallError("SDL_SetClipboardText");
-  }
-
+  SystemModel_CopyToClipboard(cstr_str(&builder));
   cstr_drop(&builder);
 }
 

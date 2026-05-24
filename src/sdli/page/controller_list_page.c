@@ -1,6 +1,5 @@
 #include "page.h"
 
-#include <sdli/app.h>
 #include <sdli/model/model.h>
 #include <sdli/screen/screen.h>
 #include <sdli/style.h>
@@ -193,11 +192,8 @@ static void RemoveMappingButtonOnClick(VNode* node, VEvent* event)
 static void CopyMappingButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(event);
-  const char* mapping_str = Controller_GetMappingString(GetControllerId(node));
-
-  if (*mapping_str) {
-    App_CopyToClipboard(mapping_str);
-  }
+  SystemModel_CopyToClipboard(
+      Controller_GetMappingString(GetControllerId(node)));
 }
 
 static void RumbleButtonOnClick(VNode* node, VEvent* event)

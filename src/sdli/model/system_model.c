@@ -129,6 +129,17 @@ int SystemModel_GetRamMiB(void)
   return SDL_GetSystemRAM();
 }
 
+void SystemModel_CopyToClipboard(const char* text)
+{
+  if (!text || *text == '\0') {
+    return;
+  }
+
+  if (!SDL_SetClipboardText(text)) {
+    SLogCallError("SDL_SetClipboardText");
+  }
+}
+
 //
 // private function implementation
 //

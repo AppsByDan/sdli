@@ -1,6 +1,19 @@
 #ifndef SDLI_MODEL_H
 #define SDLI_MODEL_H
 
+/*
+ * The models contained in this file model SDL, mostly at the subsystem level.
+ * The models abstract SDL data and events in a way that is easier for the UI to
+ * consume.
+ *
+ * No SDL types should be exposed in model interfaces. The original intent was
+ * to support SDL2 at a later point, but in practice the abstraction has been
+ * useful for caching and keeping SDL API quirks away from the UI.
+ *
+ * Models are effectively singletons, stored as global data, to avoid passing
+ * model pointers around the UI.
+ */
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -16,6 +29,11 @@
 #define STANDARD_GAMEPAD_KEY_COUNT \
   (STANDARD_GAMEPAD_BUTTON_COUNT + STANDARD_GAMEPAD_AXIS_COUNT)
 
+/*
+ * StandardGamepadKey is a mapping to SDL_GameControllerButton and
+ * SDL_GameControllerAxis. SDL_GameControllerButton is 1:1 and
+ * SDL_GameControllerAxis is 1:1 with an offset.
+ */
 typedef enum StandardGamepadKey {
   SGK_INVALID = -1,
   SGK_BUTTON_SOUTH = 0,
@@ -53,6 +71,7 @@ typedef enum StandardGamepadKey {
   SGK_AXIS_RIGHT_TRIGGER = 5 + STANDARD_GAMEPAD_KEY_AXIS_OFFSET,
 } StandardGamepadKey;
 
+/* POV hat direction masks. This is a 1:1 mapping to SDL_HAT_* values. */
 typedef enum ControllerPovHatMask {
   // SDL_HAT_* values
   POV_HAT_MASK_CENTERED = 0x00u,
@@ -62,18 +81,21 @@ typedef enum ControllerPovHatMask {
   POV_HAT_MASK_LEFT = 0x08u,
 } ControllerPovHatMask;
 
+/* Controller API types for event dispatch. */
 typedef enum ControllerApi {
   CONTROLLER_API_JOYSTICK_NONE,
   CONTROLLER_API_JOYSTICK,
   CONTROLLER_API_GAMEPAD,
 } ControllerApi;
 
+/* Controller input tag. */
 typedef enum ControllerInputType {
   CONTROLLER_INPUT_BUTTON,
   CONTROLLER_INPUT_AXIS,
   CONTROLLER_INPUT_HAT,
 } ControllerInputType;
 
+/* Controller input event structure. */
 typedef struct ControllerInputEvent {
   ControllerApi api;
   ControllerInputType type;
@@ -93,6 +115,7 @@ typedef struct ControllerInputEvent {
   } u;
 } ControllerInputEvent;
 
+/* Describes how a controller has changed.*/
 typedef enum ControllerChange {
   CONTROLLER_CHANGE_ADDED,
   CONTROLLER_CHANGE_REMOVED,
@@ -101,6 +124,7 @@ typedef enum ControllerChange {
   CONTROLLER_CHANGE_STEAM_HANDLE,
 } ControllerChange;
 
+/* Controller change event structure. */
 typedef struct ControllerChangeEvent {
   ControllerId id;
   ControllerChange change;
@@ -125,6 +149,8 @@ int SystemModel_GetBatteryLevel(void);
 int SystemModel_GetCpuCoreCount(void);
 int SystemModel_GetCpuCacheLineSize(void);
 int SystemModel_GetRamMiB(void);
+
+void SystemModel_CopyToClipboard(const char* text);
 
 /*
  * ControllerListModel manages Controllers connected to the system.
