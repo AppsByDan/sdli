@@ -3,7 +3,6 @@
 #include <sdli/app.h>
 #include <sdli/model/model.h>
 #include <sdli/page/page.h>
-#include <sdli/strings.h>
 #include <sdli/style.h>
 #include <sdli/util.h>
 #include <sdli/widget/widget.h>
@@ -84,7 +83,7 @@ VNode* HomeScreen(void)
 static void OnNavigatorEvent(NavigatorEvent* event)
 {
   if (event->type == NAVIGATOR_EVENT_ENTER) {
-    ControllerListModel_SelectController(0);
+    State_ClearController();
     PageNavigator_Goto(PAGEID_CONTROLLER_LIST);
   }
 }

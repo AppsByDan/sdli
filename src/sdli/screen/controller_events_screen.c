@@ -1,7 +1,6 @@
 #include "screen.h"
 
 #include <sdli/model/model.h>
-#include <sdli/strings.h>
 #include <sdli/style.h>
 #include <sdli/util.h>
 #include <sdli/widget/widget.h>
@@ -221,11 +220,10 @@ static void OnGamepadControllerInputEvent(const ControllerInputEvent* event)
 static void OnNavigatorEvent(NavigatorEvent* event)
 {
   if (event->type == NAVIGATOR_EVENT_ENTER) {
-    const uint32_t controller_id = ControllerListModel_GetSelectedController();
+    const ControllerId controller_id = State_GetSelectedController();
+    VNode* api_box = v_get_node_by_id(NID_API_BOX);
 
     BindString(NID_CONTROLLER_NAME, Controller_GetName(controller_id));
-
-    VNode* api_box = v_get_node_by_id(NID_API_BOX);
 
     v_node_remove_children(api_box);
     v_node_append_child(api_box, JoystickEvents(controller_id, false));
@@ -261,7 +259,7 @@ static void ToggleApiButtonOnClick(VNode* node, VEvent* event)
 
 static void SetControllerApi(VNode* toggle, ControllerApi new_api)
 {
-  ControllerId controller_id = ControllerListModel_GetSelectedController();
+  ControllerId controller_id = State_GetSelectedController();
   ControllerInputEventListener event_handler = NULL;
   bool joystick_visible = false;
   bool gamepad_visible = false;
@@ -323,7 +321,8 @@ static void SetControllerApi(VNode* toggle, ControllerApi new_api)
   v_node_set_visible(v_get_node_by_id(NID_GAMEPAD_API), gamepad_visible);
   v_node_set_visible(v_get_node_by_id(NID_JOYSTICK_API), joystick_visible);
   v_node_set_data(toggle, (void*)(intptr_t)new_api);
-  ControllerListModel_EnableControllerInputEvents(new_api, event_handler);
+  ControllerListModel_EnableControllerInputEvents(controller_id, new_api,
+                                                  event_handler);
 }
 
 static VNode* JoystickEvents(ControllerId controller_id, bool visible)

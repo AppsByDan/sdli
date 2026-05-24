@@ -1,7 +1,6 @@
 #include "page.h"
 
 #include <sdli/model/model.h>
-#include <sdli/strings.h>
 #include <sdli/style.h>
 #include <sdli/util.h>
 #include <sdli/widget/widget.h>
@@ -136,7 +135,7 @@ VNode* ControllerInfoPage(void)
 static void OnNavigatorEvent(NavigatorEvent* event)
 {
   if (event->type == NAVIGATOR_EVENT_ENTER) {
-    ControllerId controller_id = ControllerListModel_GetSelectedController();
+    ControllerId controller_id = State_GetSelectedController();
     // TODO: what if controller_id is 0?
 
     // TODO: localize some values (?)

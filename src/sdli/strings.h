@@ -89,8 +89,6 @@ typedef enum StringID {
 
 const char* GetString(Locale locale, StringID id);
 zsview      GetStringView(Locale locale, StringID id);
-// TODO: put this in the app?
-#define STR(SID) GetString(LOCALE_EN_US, SID)
 
 #endif  // SDLI_STRINGS_H
 // clang-format on

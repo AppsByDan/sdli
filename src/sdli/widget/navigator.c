@@ -1,7 +1,6 @@
 #include "widget.h"
 
 #include <sdli/util.h>
-#include <stdint.h>
 
 //
 // private function declarations

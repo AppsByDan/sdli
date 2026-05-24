@@ -3,7 +3,6 @@
 #include <sdli/app.h>
 #include <sdli/model/model.h>
 #include <sdli/screen/screen.h>
-#include <sdli/strings.h>
 #include <sdli/style.h>
 #include <sdli/util.h>
 #include <sdli/widget/widget.h>
@@ -167,21 +166,21 @@ static void OnControllerChangeEvent(const ControllerChangeEvent* event)
 static void InfoButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(event);
-  ControllerListModel_SelectController(GetControllerId(node));
+  State_SelectController(GetControllerId(node));
   PageNavigator_Goto(PAGEID_CONTROLLER_INFO);
 }
 
 static void EventsButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(event);
-  ControllerListModel_SelectController(GetControllerId(node));
+  State_SelectController(GetControllerId(node));
   ScreenNavigator_Goto(SCREENID_CONTROLLER_EVENTS);
 }
 
 static void ConfigureButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(event);
-  ControllerListModel_SelectController(GetControllerId(node));
+  State_SelectController(GetControllerId(node));
   ScreenNavigator_Goto(SCREENID_CONTROLLER_CONFIG);
 }
 

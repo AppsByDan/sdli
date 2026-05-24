@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <sdli/controller-fwd.h>
+
 //
 // types
 //
@@ -59,8 +61,6 @@ typedef enum ControllerPovHatMask {
   POV_HAT_MASK_DOWN = 0x04u,
   POV_HAT_MASK_LEFT = 0x08u,
 } ControllerPovHatMask;
-
-typedef uint32_t ControllerId;
 
 typedef enum ControllerApi {
   CONTROLLER_API_JOYSTICK_NONE,
@@ -133,9 +133,9 @@ int SystemModel_GetRamMiB(void);
 void ControllerListModel_Init(void);
 void ControllerListModel_Drop(void);
 ControllerId* ControllerListModel_SortControllers(int* out_count);
-ControllerId ControllerListModel_GetSelectedController(void);
 void ControllerListModel_SelectController(ControllerId id);
 void ControllerListModel_EnableControllerInputEvents(
+    ControllerId controller_id,
     ControllerApi api,
     ControllerInputEventListener listener);
 void ControllerListModel_DisableControllerEvents(void);

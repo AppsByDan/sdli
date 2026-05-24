@@ -111,6 +111,7 @@ add_library(${SDLI_LIB}
   "src/sdli/widget/button.c"
   "src/sdli/widget/list_item.c"
   "src/sdli/widget/navigator.c"
+  "src/sdli/widget/state.c"
 )
 
 target_link_libraries(${SDLI_LIB} PUBLIC

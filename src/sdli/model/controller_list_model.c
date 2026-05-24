@@ -156,7 +156,7 @@ static void Controller_drop(Controller* controller);
 typedef struct ControllerListModel {
   controller_map controllers;
   vec_controller_id sorted_controller_ids;
-  ControllerId selected_controller;
+  ControllerId selected_controller; /* TODO: remove this */
   ControllerInputEventListener input_event_listener;
   ControllerChangeEventListener change_listeners[8];
 } ControllerListModel;
@@ -254,21 +254,19 @@ ControllerId* ControllerListModel_SortControllers(int* out_count)
   return ids->data;
 }
 
-ControllerId ControllerListModel_GetSelectedController(void)
-{
-  return g_controller_list_model.selected_controller;
-}
-
 void ControllerListModel_SelectController(ControllerId id)
 {
   g_controller_list_model.selected_controller = id;
 }
 
 void ControllerListModel_EnableControllerInputEvents(
+    ControllerId controller_id,
     ControllerApi api,
     ControllerInputEventListener listener)
 {
   ControllerListModel_DisableControllerEvents();
+
+  g_controller_list_model.selected_controller = controller_id;
 
   if (api == CONTROLLER_API_JOYSTICK) {
     App_AddEventListener(SDL_EVENT_JOYSTICK_BUTTON_DOWN, &OnJoystickInputEvents,
@@ -303,6 +301,8 @@ void ControllerListModel_DisableControllerEvents(void)
   App_RemoveEventListener(SDL_EVENT_GAMEPAD_BUTTON_DOWN, &OnGamepadInputEvents);
   App_RemoveEventListener(SDL_EVENT_GAMEPAD_BUTTON_UP, &OnGamepadInputEvents);
   App_RemoveEventListener(SDL_EVENT_GAMEPAD_AXIS_MOTION, &OnGamepadInputEvents);
+
+  g_controller_list_model.selected_controller = 0;
 }
 
 void ControllerListModel_AddChangeEventListener(
