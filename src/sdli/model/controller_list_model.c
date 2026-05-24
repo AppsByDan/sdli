@@ -24,7 +24,12 @@
                                                 : DEFAULT;                 \
   } while (0)
 
+// these values work ok on an Xbox One S controller
+// (maybe make this configurable later)
 #define JOYSTICK_DEADZONE (SDL_JOYSTICK_AXIS_MAX / 32)
+#define JOYSTICK_RUMBLE_LOW_FREQUENCY (0xFFFF / 2)
+#define JOYSTICK_RUMBLE_HIGH_FREQUENCY (0xFFFF / 2)
+#define JOYSTICK_RUMBLE_DURATION_MS (300)
 
 static const char* JOYSTICK_PROPERTY_NAMES[] = {
     // clang-format off
@@ -58,6 +63,8 @@ typedef struct Controller {
 
   ControllerProperty properties[c_arraylen(JOYSTICK_PROPERTY_NAMES)];
   char* gamepad_mapping_csv;
+
+  bool has_rumble;
 } Controller;
 
 static void Controller_drop(Controller* controller);
@@ -644,10 +651,25 @@ bool Controller_HasMappingForKey(ControllerId id, StandardGamepadKey key)
   return false;
 }
 
+bool Controller_HasRumble(ControllerId id)
+{
+  Controller* controller = GetController(id);
+  return controller && controller->has_rumble;
+}
+
 void Controller_RemoveMapping(ControllerId id)
 {
   // this call will generate a remap event that will update the controller
   SDL_SetGamepadMapping(id, NULL);
+}
+
+void Controller_Rumble(ControllerId id)
+{
+  Controller* controller = GetController(id);
+
+  if (controller && controller->has_rumble) {
+    SDL_RumbleJoystick(controller->joystick, 0xFFFF / 2, 0xFFFF / 2, 300);
+  }
 }
 
 const char* StandardGamepadKey_ToString(StandardGamepadKey key)
@@ -1041,6 +1063,9 @@ static void UpdateProperties(Controller* controller)
     controller->properties[i].value = SDL_GetBooleanProperty(
         joystick_properties, controller->properties[i].name, false);
   }
+
+  controller->has_rumble = SDL_GetBooleanProperty(
+      joystick_properties, SDL_PROP_JOYSTICK_CAP_RUMBLE_BOOLEAN, false);
 }
 
 static float JoystickAxisToFloat(Sint16 value)

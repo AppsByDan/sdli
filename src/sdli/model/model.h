@@ -190,8 +190,9 @@ bool Controller_GetButtonValue(ControllerId id, StandardGamepadKey button);
 const char* Controller_GetMappingString(ControllerId id);
 bool Controller_HasMapping(ControllerId id);
 bool Controller_HasMappingForKey(ControllerId id, StandardGamepadKey key);
-
+bool Controller_HasRumble(ControllerId id);
 void Controller_RemoveMapping(ControllerId id);
+void Controller_Rumble(ControllerId id);
 
 const char* StandardGamepadKey_ToString(StandardGamepadKey key);
 

@@ -23,9 +23,12 @@ static void EventsButtonOnClick(VNode* node, VEvent* event);
 static void ConfigureButtonOnClick(VNode* node, VEvent* event);
 static void RemoveMappingButtonOnClick(VNode* node, VEvent* event);
 static void CopyMappingButtonOnClick(VNode* node, VEvent* event);
+static void RumbleButtonOnClick(VNode* node, VEvent* event);
 static void ReloadMappingsButtonOnClick(VNode* node, VEvent* event);
 static void LoadMappingsFromClipboardButtonOnClick(VNode* node, VEvent* event);
 static void ExportMappingsToClipboardButtonOnClick(VNode* node, VEvent* event);
+static ControllerId GetControllerId(VNode* node);
+
 //
 // public function implementation
 //
@@ -81,6 +84,11 @@ static VNode* ControllerListItem(ControllerId id)
   vs_set_width(v_node_style(text), V_GROW());
   v_node_set_text_fmt(text, "%i :: %s :: %s", (int)id, Controller_GetName(id),
                       Controller_GetGUID(id));
+
+  if (Controller_HasRumble(id)) {
+    v_node_append_child(list_item,
+                        Button("R", button_data, &RumbleButtonOnClick));
+  }
 
   if (Controller_HasMapping(id)) {
     v_node_append_child(list_item,
@@ -159,42 +167,44 @@ static void OnControllerChangeEvent(const ControllerChangeEvent* event)
 static void InfoButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(event);
-  ControllerListModel_SelectController(
-      (ControllerId)(uintptr_t)v_node_data(node));
+  ControllerListModel_SelectController(GetControllerId(node));
   PageNavigator_Goto(PAGEID_CONTROLLER_INFO);
 }
 
 static void EventsButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(event);
-  ControllerListModel_SelectController(
-      (ControllerId)(uintptr_t)v_node_data(node));
+  ControllerListModel_SelectController(GetControllerId(node));
   ScreenNavigator_Goto(SCREENID_CONTROLLER_EVENTS);
 }
 
 static void ConfigureButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(event);
-  ControllerListModel_SelectController(
-      (ControllerId)(uintptr_t)v_node_data(node));
+  ControllerListModel_SelectController(GetControllerId(node));
   ScreenNavigator_Goto(SCREENID_CONTROLLER_CONFIG);
 }
 
 static void RemoveMappingButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(event);
-  Controller_RemoveMapping((ControllerId)(uintptr_t)v_node_data(node));
+  Controller_RemoveMapping(GetControllerId(node));
 }
 
 static void CopyMappingButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(event);
-  const char* mapping_str =
-      Controller_GetMappingString((ControllerId)(uintptr_t)v_node_data(node));
+  const char* mapping_str = Controller_GetMappingString(GetControllerId(node));
 
   if (*mapping_str) {
     App_CopyToClipboard(mapping_str);
   }
+}
+
+static void RumbleButtonOnClick(VNode* node, VEvent* event)
+{
+  UNUSED(event);
+  Controller_Rumble(GetControllerId(node));
 }
 
 static void ReloadMappingsButtonOnClick(VNode* node, VEvent* event)
@@ -213,4 +223,9 @@ static void ExportMappingsToClipboardButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(node, event);
   ControllerListModel_ExportMappingsToClipboard();
+}
+
+static ControllerId GetControllerId(VNode* node)
+{
+  return (ControllerId)(uintptr_t)v_node_data(node);
 }
