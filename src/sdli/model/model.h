@@ -93,6 +93,7 @@ typedef enum ControllerInputType {
   CONTROLLER_INPUT_BUTTON,
   CONTROLLER_INPUT_AXIS,
   CONTROLLER_INPUT_HAT,
+  CONTROLLER_INPUT_BINDING,
 } ControllerInputType;
 
 /* Controller input event structure. */
@@ -112,6 +113,9 @@ typedef struct ControllerInputEvent {
       int id;
       uint8_t value;
     } hat;
+    struct {
+      const char* value;
+    } binding;
   } u;
 } ControllerInputEvent;
 
@@ -231,6 +235,9 @@ void ControllerInputModel_Drop(void);
 void ControllerInputModel_Enable(ControllerId controller_id,
                                  ControllerApi api,
                                  ControllerInputEventListener listener);
+/* Start listening for Mapper events. */
+void ControllerInputModel_EnableMapper(ControllerId controller_id,
+                                       ControllerInputEventListener listener);
 /* Stop listening for controller input events. */
 void ControllerInputModel_Disable(void);
 
