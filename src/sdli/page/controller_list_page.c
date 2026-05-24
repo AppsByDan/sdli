@@ -1,5 +1,6 @@
 #include "page.h"
 
+#include <sdli/app.h>
 #include <sdli/model/model.h>
 #include <sdli/screen/screen.h>
 #include <sdli/strings.h>
@@ -22,7 +23,9 @@ static void EventsButtonOnClick(VNode* node, VEvent* event);
 static void ConfigureButtonOnClick(VNode* node, VEvent* event);
 static void RemoveMappingButtonOnClick(VNode* node, VEvent* event);
 static void CopyMappingButtonOnClick(VNode* node, VEvent* event);
-
+static void ReloadMappingsButtonOnClick(VNode* node, VEvent* event);
+static void LoadMappingsFromClipboardButtonOnClick(VNode* node, VEvent* event);
+static void ExportMappingsToClipboardButtonOnClick(VNode* node, VEvent* event);
 //
 // public function implementation
 //
@@ -54,15 +57,16 @@ static VNode* ControllerListItem(ControllerId id)
 {
   // TODO: create a proper controller list item widget
 
+  void* button_data = (void*)(uintptr_t)id;
   // clang-format off
   VNode* list_item = Box({
     .sclass = CLS_LIST,
     Children(
       Text({.sclass = CLS_TEXT}),
       // TODO: localize
-      Button("Info", (void*)(uintptr_t)id, &InfoButtonOnClick),
-      Button("Events", (void*)(uintptr_t)id, &EventsButtonOnClick),
-      Button("Configure", (void*)(uintptr_t)id, &ConfigureButtonOnClick)
+      Button("Events", button_data, &EventsButtonOnClick),
+      Button("Configure", button_data, &ConfigureButtonOnClick),
+      Button("I", button_data, &InfoButtonOnClick)
     )
   });
   // clang-format on
@@ -79,10 +83,10 @@ static VNode* ControllerListItem(ControllerId id)
                       Controller_GetGUID(id));
 
   if (Controller_HasMapping(id)) {
-    v_node_append_child(list_item, Button("RM", (void*)(uintptr_t)id,
-                                          &RemoveMappingButtonOnClick));
-    v_node_append_child(list_item, Button("CM", (void*)(uintptr_t)id,
-                                          &CopyMappingButtonOnClick));
+    v_node_append_child(list_item,
+                        Button("RM", button_data, &RemoveMappingButtonOnClick));
+    v_node_append_child(list_item,
+                        Button("CM", button_data, &CopyMappingButtonOnClick));
   }
 
   return list_item;
@@ -102,6 +106,18 @@ static void OnNavigatorEvent(NavigatorEvent* event)
         ControllerListModel_SortControllers(&controller_count);
 
     // TODO: show message for no controllers
+    // TODO: the button row is not final design
+
+    // clang-format off
+    v_node_append_child(list, Box({
+      .sclass= CLS_BUTTON_ROW,
+      Children(
+        Button("Reload Mappings", NULL, &ReloadMappingsButtonOnClick),
+        Button("Load Mappings (Clipboard)", NULL, &LoadMappingsFromClipboardButtonOnClick),
+        Button("Export Mappings (Clipboard)", NULL, &ExportMappingsToClipboardButtonOnClick)
+      )
+    }));
+    // clang-format on
 
     for (int i = 0; i < controller_count; ++i) {
       v_node_append_child(list, ControllerListItem(controller_ids[i]));
@@ -173,6 +189,28 @@ static void RemoveMappingButtonOnClick(VNode* node, VEvent* event)
 static void CopyMappingButtonOnClick(VNode* node, VEvent* event)
 {
   UNUSED(event);
-  App_CopyToClipboard(
-      Controller_GetMappingString((ControllerId)(uintptr_t)v_node_data(node)));
+  const char* mapping_str =
+      Controller_GetMappingString((ControllerId)(uintptr_t)v_node_data(node));
+
+  if (*mapping_str) {
+    App_CopyToClipboard(mapping_str);
+  }
+}
+
+static void ReloadMappingsButtonOnClick(VNode* node, VEvent* event)
+{
+  UNUSED(node, event);
+  ControllerListModel_ReloadMappings();
+}
+
+static void LoadMappingsFromClipboardButtonOnClick(VNode* node, VEvent* event)
+{
+  UNUSED(node, event);
+  ControllerListModel_LoadMappingsFromClipboard();
+}
+
+static void ExportMappingsToClipboardButtonOnClick(VNode* node, VEvent* event)
+{
+  UNUSED(node, event);
+  ControllerListModel_ExportMappingsToClipboard();
 }

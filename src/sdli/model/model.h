@@ -148,6 +148,9 @@ void ControllerListModel_AddChangeEventListener(
     ControllerChangeEventListener listener);
 void ControllerListModel_RemoveChangeEventListener(
     ControllerChangeEventListener listener);
+void ControllerListModel_ReloadMappings(void);
+int ControllerListModel_LoadMappingsFromClipboard(void);
+void ControllerListModel_ExportMappingsToClipboard(void);
 
 /*
  * Controller exposes SDL Joystick and Gamepad information about a specific

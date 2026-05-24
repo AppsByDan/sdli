@@ -57,7 +57,7 @@ typedef struct Controller {
   SDL_Gamepad* gamepad;
 
   ControllerProperty properties[c_arraylen(JOYSTICK_PROPERTY_NAMES)];
-  const char* gamepad_mapping_csv;
+  char* gamepad_mapping_csv;
 } Controller;
 
 static void Controller_drop(Controller* controller);
@@ -97,7 +97,6 @@ static bool AddController(SDL_JoystickID id);
 static void UpdatePowerInfo(Controller* controller);
 static void UpdateGamepadById(SDL_JoystickID id);
 static void UpdateGamepad(Controller* controller);
-static void RemoveGamepadById(ControllerId id);
 static void ClearGamepad(Controller* controller);
 static void OnAppEvent(int event_type, void* event_data, void* user_data);
 static void OnJoystickInputEvents(int event_type,
@@ -257,6 +256,51 @@ void ControllerListModel_RemoveChangeEventListener(
       return;
     }
   }
+}
+
+void ControllerListModel_ReloadMappings(void)
+{
+  SDL_ReloadGamepadMappings();
+}
+
+int ControllerListModel_LoadMappingsFromClipboard(void)
+{
+  char* mappings = SDL_GetClipboardText();
+
+  if (!mappings) {
+    return -1;
+  }
+
+  SDL_IOStream* src = SDL_IOFromConstMem(mappings, SDL_strlen(mappings));
+
+  if (!src) {
+    SDL_free(mappings);
+    return -1;
+  }
+
+  const int result = SDL_AddGamepadMappingsFromIO(src, true);
+
+  SDL_free(mappings);
+
+  return result;
+}
+
+void ControllerListModel_ExportMappingsToClipboard(void)
+{
+  cstr builder = cstr_init();
+
+  c_foreach(it, controller_map, g_controller_list_model.controllers)
+  {
+    const char* mapping = Controller_GetMappingString(it.ref->first);
+
+    if (*mapping) {
+      cstr_append(&builder, mapping);
+      cstr_append(&builder, "\n");
+    }
+  }
+
+  SDL_SetClipboardText(cstr_str(&builder));
+  cstr_drop(&builder);
 }
 
 const char* Controller_GetName(ControllerId id)
@@ -793,11 +837,6 @@ static void UpdateGamepad(Controller* controller)
   controller->gamepad_mapping_csv = NULL;
 }
 
-static void RemoveGamepadById(ControllerId id)
-{
-  controller_map_erase(&g_controller_list_model.controllers, id);
-}
-
 static void ClearGamepad(Controller* controller)
 {
   if (controller->gamepad) {
@@ -836,7 +875,26 @@ static void OnAppEvent(int event_type, void* event_data, void* user_data)
       controller_map_erase(&g_controller_list_model.controllers,
                            sdl_event->jdevice.which);
       break;
-    case SDL_EVENT_GAMEPAD_REMOVED:
+    case SDL_EVENT_GAMEPAD_REMOVED: {
+      Controller* controller = GetController(sdl_event->gdevice.which);
+
+      if (controller) {
+        // Mapping API, like SDL_ReloadGamepadMappings, will generate
+        // GAMEPAD_REMOVED events. It appears that remove means that the Gamepad
+        // instance is no longer valid. ClearGamepad will destroy the Gamepad
+        // instance.
+        ClearGamepad(controller);
+        // XXX: open the gamepad for this device to trigger a GAMEPAD_ADDED
+        // event. UpdateGamepad will work here, but that will generate a
+        // GAMEPAD_ADDED and call UpdateGamepad on the next frame. Unclear
+        // if this is a bug in SDL or just a quirk of the API.
+        SDL_Gamepad* gamepad = SDL_OpenGamepad(controller->id);
+        if (gamepad) {
+          SDL_CloseGamepad(gamepad);
+        }
+      }
+      break;
+    }
     case SDL_EVENT_GAMEPAD_ADDED:
     case SDL_EVENT_GAMEPAD_REMAPPED: {
       UpdateGamepadById(sdl_event->gdevice.which);

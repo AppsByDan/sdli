@@ -99,6 +99,12 @@ void LoadStyleSheet(void)
     vs_set_border_color(S, THEME_LIST_BORDER_COLOR);
   }
 
+  vss_extend(S, CLS_BUTTON_ROW, CLS_LIST)
+  {
+    vs_set_direction(S, V_DIRECTION_ROW);
+    vs_set_gap(S, THEME_SP_SM);
+  }
+
   vss_with(S, CLS_LIST_ITEM)
   {
     vs_set_direction(S, V_DIRECTION_ROW);
