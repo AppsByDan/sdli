@@ -68,11 +68,6 @@ typedef enum ControllerApi {
   CONTROLLER_API_GAMEPAD,
 } ControllerApi;
 
-typedef struct ControllerProperty {
-  const char* name;
-  bool value;
-} ControllerProperty;
-
 typedef enum ControllerInputType {
   CONTROLLER_INPUT_BUTTON,
   CONTROLLER_INPUT_AXIS,
@@ -179,9 +174,7 @@ int Controller_GetHatCount(ControllerId id);
 int Controller_GetBallCount(ControllerId id);
 int Controller_GetTouchpadCount(ControllerId id);
 uint64_t Controller_GetSteamHandle(ControllerId id);
-const ControllerProperty* Controller_GetProperties(ControllerId id,
-                                                   int* out_count);
-const char** Controller_GetPropertyNames(int* out_count);
+bool Controller_GetPropertyValue(ControllerId id, int property_index);
 float Controller_GetJoystickAxisValue(ControllerId id, int axis);
 uint8_t Controller_GetJoystickHatValue(ControllerId id, int hat);
 bool Controller_GetJoystickButtonValue(ControllerId id, int button);
@@ -191,8 +184,14 @@ const char* Controller_GetMappingString(ControllerId id);
 bool Controller_HasMapping(ControllerId id);
 bool Controller_HasMappingForKey(ControllerId id, StandardGamepadKey key);
 bool Controller_HasRumble(ControllerId id);
+int Controller_GetBindingCount(ControllerId id);
+const char* Controller_GetBindingName(ControllerId id, int binding_index);
+const char* Controller_GetBindingValue(ControllerId id, int binding_index);
 void Controller_RemoveMapping(ControllerId id);
 void Controller_Rumble(ControllerId id);
+
+int Controller_GetPropertyCount(void);
+const char* Controller_GetPropertyName(int property_index);
 
 const char* StandardGamepadKey_ToString(StandardGamepadKey key);
 

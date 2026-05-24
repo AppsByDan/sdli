@@ -34,6 +34,8 @@
 #define NID_BALL_COUNT "ci:balls"
 #define NID_TOUCHPAD_COUNT "ci:tpads"
 #define NID_STEAM_ID "ci:steam"
+#define NID_MAPPINGS_TITLE "ci:mappings-h2"
+#define NID_MAPPINGS "ci:mappings"
 #define NID_PROPERTY_FMT "ci:prop:%i"
 
 //
@@ -50,6 +52,12 @@ static void OnBackButtonClick(VNode* node, VEvent* event);
 VNode* ControllerInfoPage(void)
 {
   VNode* properties_list = Box({.sclass = CLS_LIST});
+  VNode* mappings_title = Text({
+      .id = NID_MAPPINGS_TITLE,
+      .content.text = "MAPPINGS",
+      .sclass = CLS_PAGE_H2,
+  });
+  VNode* mappings = Box({.id = NID_MAPPINGS, .sclass = CLS_LIST});
   // clang-format off
   VNode* page = Box({
     .id = PAGEID_CONTROLLER_INFO,
@@ -89,18 +97,19 @@ VNode* ControllerInfoPage(void)
             )
           }),
           Text({.content.text = STR(SID_CAP_PROPERTIES), .sclass = CLS_PAGE_H2}),
-          properties_list
+          properties_list,
+          mappings_title,
+          mappings
         )
       })
     )
   });
   // clang-format on
 
-  int property_count = 0;
-  const char** property_names = Controller_GetPropertyNames(&property_count);
+  const int property_count = Controller_GetPropertyCount();
 
   for (int i = 0; i < property_count; ++i) {
-    const char* property_name = property_names[i];
+    const char* property_name = Controller_GetPropertyName(i);
     VNode* kv_list_item;
 
     if (i == property_count - 1) {
@@ -113,6 +122,9 @@ VNode* ControllerInfoPage(void)
                       i);
     v_node_append_child(properties_list, kv_list_item);
   }
+
+  v_node_set_visible(mappings_title, false);
+  v_node_set_visible(mappings, false);
 
   return Navigable_Init(page, &OnNavigatorEvent);
 }
@@ -154,22 +166,47 @@ static void OnNavigatorEvent(NavigatorEvent* event)
     BindInt(NID_TOUCHPAD_COUNT, Controller_GetTouchpadCount(controller_id));
     BindU64(NID_STEAM_ID, Controller_GetSteamHandle(controller_id));
 
-    int property_count = 0;
-    const ControllerProperty* properties =
-        Controller_GetProperties(controller_id, &property_count);
-
+    const int property_count = Controller_GetPropertyCount();
     cstr temp = cstr_init();
 
     for (int i = 0; i < property_count; ++i) {
-      const ControllerProperty* property = &properties[i];
-
       cstr_clear(&temp);
       cstr_append_fmt(&temp, NID_PROPERTY_FMT, i);
-
-      BindBool(cstr_str(&temp), property->value);
+      BindBool(cstr_str(&temp), Controller_GetPropertyValue(controller_id, i));
     }
 
     cstr_drop(&temp);
+
+    VNode* mappings_title = v_get_node_by_id(NID_MAPPINGS_TITLE);
+    VNode* mappings = v_get_node_by_id(NID_MAPPINGS);
+
+    if (Controller_HasMapping(controller_id)) {
+      v_node_set_visible(mappings_title, true);
+      v_node_set_visible(mappings, true);
+    } else {
+      v_node_set_visible(mappings_title, false);
+      v_node_set_visible(mappings, false);
+      return;
+    }
+
+    v_node_remove_children(mappings);
+
+    const int binding_count = Controller_GetBindingCount(controller_id);
+
+    for (int i = 0; i < binding_count; ++i) {
+      VNode* kv_list_item;
+      const char* binding_name = Controller_GetBindingName(controller_id, i);
+
+      if (i == binding_count - 1) {
+        kv_list_item = KeyValueListItemLast(binding_name, NULL);
+      } else {
+        kv_list_item = KeyValueListItem(binding_name, NULL);
+      }
+
+      v_node_set_text(KeyValueListItem_GetValue(kv_list_item),
+                      Controller_GetBindingValue(controller_id, i));
+      v_node_append_child(mappings, kv_list_item);
+    }
   }
 }
 

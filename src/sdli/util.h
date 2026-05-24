@@ -25,6 +25,8 @@
 #define Image v_img
 #define Children v_children
 
+#define zv_init(STR) {STR, (isize)(sizeof("" STR) - 1)}
+
 //
 // public functions
 //

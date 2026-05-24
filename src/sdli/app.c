@@ -19,7 +19,6 @@ typedef struct EventGroupListener {
   void* user_data;
 } EventGroupListener;
 
-#define i_implement
 #define i_no_clone
 #define i_no_emplace
 #define i_key EventGroupListener
@@ -34,7 +33,6 @@ typedef struct EventGroup {
 
 static void EventGroup_drop(EventGroup* group);
 
-#define i_implement
 #define i_no_clone
 #define i_no_emplace
 #define i_key int

@@ -7,7 +7,7 @@
 // macros & constants
 //
 
-#define zv_init(STR) {STR, c_litstrlen(STR)}
+#define zv_init(STR) {STR, (isize)(sizeof("" STR) - 1)}
 
 //
 // global state

@@ -224,7 +224,7 @@ def main():
         f_c.write("// macros & constants\n")
         f_c.write("//\n\n")
 
-        f_c.write("#define zv_init(STR) {STR, c_litstrlen(STR)}\n\n")
+        f_c.write("#define zv_init(STR) {STR, (isize)(sizeof(\"\" STR) - 1)}\n\n")
 
         f_c.write("//\n")
         f_c.write("// global state\n")

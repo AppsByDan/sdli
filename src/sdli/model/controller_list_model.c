@@ -5,6 +5,8 @@
 
 #include <SDL3/SDL.h>
 #include <stc/cstr.h>
+#include <stc/zsview.h>
+#include <stc/csview.h>
 
 //
 // macros & constants
@@ -41,9 +43,71 @@ static const char* JOYSTICK_PROPERTY_NAMES[] = {
     // clang-format on
 };
 
+static zsview GAMEPAD_MAPPING_NAMES[] = {
+    // clang-format off
+    zv_init("guid"),
+    zv_init("name"),
+    // buttons
+    zv_init("a"),
+    zv_init("b"),
+    zv_init("x"),
+    zv_init("y"),
+    zv_init("back"),
+    zv_init("guide"),
+    zv_init("start"),
+    zv_init("leftstick"),
+    zv_init("rightstick"),
+    zv_init("leftshoulder"),
+    zv_init("rightshoulder"),
+    zv_init("dpup"),
+    zv_init("dpdown"),
+    zv_init("dpleft"),
+    zv_init("dpright"),
+    zv_init("misc1"),
+    zv_init("paddle1"),
+    zv_init("paddle2"),
+    zv_init("paddle3"),
+    zv_init("paddle4"),
+    zv_init("touchpad"),
+    zv_init("misc2"),
+    zv_init("misc3"),
+    zv_init("misc4"),
+    zv_init("misc5"),
+    zv_init("misc6"),
+    // axes
+    zv_init("leftx"),
+    zv_init("lefty"),
+    zv_init("rightx"),
+    zv_init("righty"),
+    zv_init("lefttrigger"),
+    zv_init("righttrigger"),
+    // other
+    zv_init("crc"),
+    zv_init("type"),
+    zv_init("face"),
+    zv_init("platform"),
+    zv_init("hint"),
+    zv_init("sdk>="),
+    zv_init("sdk<="),
+    // clang-format on
+};
+
 //
 // private types
 //
+
+typedef struct GamepadMapping {
+  cstr value;
+  int name_index;
+} GamepadMapping;
+
+static void GamepadMapping_drop(GamepadMapping* mapping);
+
+#define i_no_clone
+#define i_no_emplace
+#define i_keyclass GamepadMapping
+#define i_type gamepad_mappings
+#include <stc/vec.h>
 
 typedef struct Controller {
   ControllerId id;
@@ -55,21 +119,23 @@ typedef struct Controller {
   SDL_PowerState power_state;
   int battery_level;
 
+  // TODO: this may not be necessary..
   SDL_GamepadBinding** gamepad_bindings;
   int gamepad_bindings_count;
 
   SDL_Joystick* joystick;
   SDL_Gamepad* gamepad;
 
-  ControllerProperty properties[c_arraylen(JOYSTICK_PROPERTY_NAMES)];
+  bool properties[c_arraylen(JOYSTICK_PROPERTY_NAMES)];
   char* gamepad_mapping_csv;
+
+  gamepad_mappings mappings;
 
   bool has_rumble;
 } Controller;
 
 static void Controller_drop(Controller* controller);
 
-#define i_implement
 #define i_no_clone
 #define i_no_emplace
 #define i_key ControllerId
@@ -105,6 +171,7 @@ static void UpdatePowerInfo(Controller* controller);
 static void UpdateGamepadById(SDL_JoystickID id);
 static void UpdateGamepad(Controller* controller);
 static void ClearGamepad(Controller* controller);
+static void ParseGamepadMapping(Controller* controller);
 static void OnAppEvent(int event_type, void* event_data, void* user_data);
 static void OnJoystickInputEvents(int event_type,
                                   void* event_data,
@@ -118,6 +185,9 @@ static void UpdateProperties(Controller* controller);
 static float JoystickAxisToFloat(Sint16 value);
 static void DispatchControllerChangeEvent(ControllerId id,
                                           ControllerChange change);
+static bool ReadString(csview* src, csview* out, int ch);
+static bool FindMappingNameIndex(csview name, int* out_index);
+static GamepadMapping GamepadMapping_Init(csview value, int name_index);
 
 //
 // global state
@@ -514,24 +584,58 @@ uint64_t Controller_GetSteamHandle(ControllerId id)
   ReturnGamepadValue(id, SDL_GetGamepadSteamHandle, 0);
 }
 
-const ControllerProperty* Controller_GetProperties(ControllerId id,
-                                                   int* out_count)
+bool Controller_GetPropertyValue(ControllerId id, int property_index)
 {
   Controller* controller = GetController(id);
 
-  if (!controller) {
-    *out_count = 0;
-    return NULL;
-  }
-
-  *out_count = (int)c_arraylen(controller->properties);
-  return &controller->properties[0];
+  return controller && property_index >= 0 &&
+         property_index < (int)c_arraylen(JOYSTICK_PROPERTY_NAMES) &&
+         controller->properties[property_index];
 }
 
-const char** Controller_GetPropertyNames(int* out_count)
+int Controller_GetPropertyCount(void)
 {
-  *out_count = (int)c_arraylen(JOYSTICK_PROPERTY_NAMES);
-  return &JOYSTICK_PROPERTY_NAMES[0];
+  return (int)c_arraylen(JOYSTICK_PROPERTY_NAMES);
+}
+
+const char* Controller_GetPropertyName(int property_index)
+{
+  return (property_index >= 0 &&
+          property_index < (int)c_arraylen(JOYSTICK_PROPERTY_NAMES))
+             ? JOYSTICK_PROPERTY_NAMES[property_index]
+             : "";
+}
+
+const char* Controller_GetBindingName(ControllerId id, int binding_index)
+{
+  Controller* controller = GetController(id);
+
+  if (controller && binding_index >= 0 &&
+      binding_index < (int)gamepad_mappings_size(&controller->mappings)) {
+    return GAMEPAD_MAPPING_NAMES[controller->mappings.data[binding_index]
+                                     .name_index]
+        .str;
+  }
+
+  return "";
+}
+
+const char* Controller_GetBindingValue(ControllerId id, int binding_index)
+{
+  Controller* controller = GetController(id);
+
+  if (controller && binding_index >= 0 &&
+      binding_index < (int)gamepad_mappings_size(&controller->mappings)) {
+    return cstr_str(&controller->mappings.data[binding_index].value);
+  }
+
+  return "";
+}
+
+int Controller_GetBindingCount(ControllerId id)
+{
+  Controller* controller = GetController(id);
+  return controller ? (int)gamepad_mappings_size(&controller->mappings) : 0;
 }
 
 float Controller_GetJoystickAxisValue(ControllerId id, int axis)
@@ -599,21 +703,13 @@ const char* Controller_GetMappingString(ControllerId id)
 {
   Controller* controller = GetController(id);
 
-  // If no bindings exist, SDL can return a mapping string with name, guid and
-  // platform, which is not useful for this app.
-  if (controller && controller->gamepad_bindings_count > 0) {
-    if (controller->gamepad_mapping_csv) {
-      return controller->gamepad_mapping_csv;
-    }
+  // If no bindings exist, SDL can return a mapping string with name, guid, etc,
+  // which is not useful for this app.
 
-    if (controller->gamepad) {
-      controller->gamepad_mapping_csv =
-          SDL_GetGamepadMapping(controller->gamepad);
-      return EnsureString(controller->gamepad_mapping_csv, "");
-    }
-  }
-
-  return "";
+  return (controller && controller->gamepad_bindings_count > 0 &&
+          controller->gamepad_mapping_csv)
+             ? controller->gamepad_mapping_csv
+             : "";
 }
 
 bool Controller_HasMapping(ControllerId id)
@@ -754,6 +850,7 @@ void Controller_drop(Controller* controller)
 
   cstr_drop(&controller->joystick_name);
   cstr_drop(&controller->gamepad_name);
+  gamepad_mappings_drop(&controller->mappings);
 
   if (controller->joystick) {
     SDL_CloseJoystick(controller->joystick);
@@ -854,9 +951,10 @@ static void UpdateGamepad(Controller* controller)
 
   cstr_assign(&controller->gamepad_name, EnsureString(gamepad_name, ""));
 
-  // mapping string is lazily loaded
   SDL_free(controller->gamepad_mapping_csv);
-  controller->gamepad_mapping_csv = NULL;
+  controller->gamepad_mapping_csv = SDL_GetGamepadMapping(gamepad);
+
+  ParseGamepadMapping(controller);
 }
 
 static void ClearGamepad(Controller* controller)
@@ -874,6 +972,89 @@ static void ClearGamepad(Controller* controller)
 
   SDL_free(controller->gamepad_mapping_csv);
   controller->gamepad_mapping_csv = NULL;
+
+  gamepad_mappings_clear(&controller->mappings);
+}
+
+static bool ReadString(csview* src, csview* out, int ch)
+{
+  for (isize i = 0; i < src->size; i++) {
+    if (src->buf[i] == ch) {
+      *out = *src;
+      out->size = i;
+      src->buf += i + 1;
+      src->size -= i + 1;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static bool FindMappingNameIndex(csview name, int* out_index)
+{
+  for (size_t i = 0; i < c_arraylen(GAMEPAD_MAPPING_NAMES); i++) {
+    if (csview_equals_sv(name, csview_with_n(GAMEPAD_MAPPING_NAMES[i].str,
+                                             GAMEPAD_MAPPING_NAMES[i].size))) {
+      *out_index = (int)i;
+      return true;
+    }
+  }
+  return false;
+}
+
+static void ParseGamepadMapping(Controller* controller)
+{
+  gamepad_mappings_clear(&controller->mappings);
+
+  if (controller->gamepad_mapping_csv == NULL) {
+    return;
+  }
+
+  // gamepad_mapping_csv comes from SDL, so we can assume it's well-formed.
+  csview source = csview_from(controller->gamepad_mapping_csv);
+  csview key = csview_init();
+  csview value = csview_init();
+  int name_index;
+  bool result;
+
+  result = ReadString(&source, &value, ',');
+
+  if (!result) {
+    goto error;
+  }
+
+  gamepad_mappings_push_back(&controller->mappings,
+                             GamepadMapping_Init(value, 0));
+
+  result = ReadString(&source, &value, ',');
+
+  if (!result) {
+    goto error;
+  }
+
+  gamepad_mappings_push_back(&controller->mappings,
+                             GamepadMapping_Init(value, 1));
+
+  while (ReadString(&source, &key, ':')) {
+    if (!ReadString(&source, &value, ',')) {
+      goto error;
+    }
+
+    if (!FindMappingNameIndex(key, &name_index)) {
+      // TODO: log warning about unknown mapping name
+      printf("Warning: unknown mapping name '%.*s'\n", (int)key.size, key.buf);
+      continue;
+    }
+
+    gamepad_mappings_push_back(&controller->mappings,
+                               GamepadMapping_Init(value, name_index));
+  }
+
+  return;
+
+error:
+  gamepad_mappings_clear(&controller->mappings);
 }
 
 static void OnAppEvent(int event_type, void* event_data, void* user_data)
@@ -947,8 +1128,6 @@ static void OnJoystickInputEvents(int event_type,
   ControllerInputEvent input_event = {
       .api = CONTROLLER_API_JOYSTICK,
   };
-
-  // TODO: filter by controller id
 
   switch (event_type) {
     case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
@@ -1056,12 +1235,10 @@ static void UpdateProperties(Controller* controller)
 
   SDL_PropertiesID joystick_properties =
       SDL_GetJoystickProperties(controller->joystick);
-  int property_count = (int)c_arraylen(controller->properties);
 
-  for (int i = 0; i < property_count; ++i) {
-    controller->properties[i].name = JOYSTICK_PROPERTY_NAMES[i];
-    controller->properties[i].value = SDL_GetBooleanProperty(
-        joystick_properties, controller->properties[i].name, false);
+  for (size_t i = 0; i < c_arraylen(controller->properties); i++) {
+    controller->properties[i] = SDL_GetBooleanProperty(
+        joystick_properties, JOYSTICK_PROPERTY_NAMES[i], false);
   }
 
   controller->has_rumble = SDL_GetBooleanProperty(
@@ -1100,4 +1277,17 @@ static void DispatchControllerChangeEvent(ControllerId id,
       listener(&event);
     }
   }
+}
+
+static GamepadMapping GamepadMapping_Init(csview value, int name_index)
+{
+  return (GamepadMapping){
+      .value = cstr_from_sv(value),
+      .name_index = name_index,
+  };
+}
+
+static void GamepadMapping_drop(GamepadMapping* mapping)
+{
+  cstr_drop(&mapping->value);
 }
