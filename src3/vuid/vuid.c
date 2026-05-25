@@ -263,6 +263,10 @@ VUID_PRIVATE void   v_array_pop(VArray* self);
 VUID_PRIVATE void*  v_array_get_mut(VArray* self, size_t index);
 VUID_PRIVATE void   v_array_remove(VArray* self, size_t index);
 VUID_PRIVATE void   v_array_apply(VArray* self, void (*fn)(void* item, void* ctx), void* ctx);
+static inline void  v_array_clear(VArray* self) {
+  self->size = 0;
+}
+
 // clang-format on
 
 //
@@ -909,6 +913,7 @@ typedef struct VContext {
   VNodeIdHashSet nodes_by_id;
   VStyleClassHashSet style_classes_by_id;
   VResources resources;
+  VArray event_path;
 
   int node_count;
   int style_count;
@@ -923,6 +928,8 @@ VUID_PRIVATE void*        v_ctx_alloc(VAllocatorOp op, void* ptr, size_t old_siz
 VUID_PRIVATE void         v_ctx__remove_input_node(VNode* node);
 VUID_PRIVATE void         v_ctx__remove_popover_node(VNode* node);
 VUID_PRIVATE bool         v_ctx__has_gfx_feature(VGfxFeature feature);
+VUID_PRIVATE VArray*      v_ctx__get_event_path(void);
+VUID_PRIVATE void         v_ctx__clear_event_path(void);
 // clang-format on
 
 #define v_ctx_new(TYPE) v_ctx_alloc(V_AOP_CALLOC, NULL, 0, sizeof(TYPE))
@@ -1071,6 +1078,7 @@ bool v_init(const VConfig* config) {
   // TODO: are these initial capacities reasonable?
   // TODO: what if internal allocations fail?
   g_context.popover_stack = v_array_init(sizeof(VNode*), 8);
+  g_context.event_path = v_array_init(sizeof(VNode*), 32);
   g_context.nodes_by_id = v_node_id_hset_init_with_capacity(32);
   g_context.style_classes_by_id = v_style_class_hset_init_with_capacity(32);
   g_context.resources = v_resources_init_with_capacity(32);
@@ -1096,6 +1104,7 @@ void v_quit(void) {
 
   assert(g_context.nodes_by_id.size == 0);
   assert(g_context.popover_stack.size == 0);
+  assert(g_context.event_path.size == 0);
   assert(g_context.active_node == NULL);
   assert(g_context.hovered_node == NULL);
   assert(g_context.drag_node == NULL);
@@ -1103,6 +1112,7 @@ void v_quit(void) {
 
   v_node_id_hset_drop(&g_context.nodes_by_id);
   v_array_drop(&g_context.popover_stack);
+  v_array_drop(&g_context.event_path);
   v_resources_drop(&g_context.resources);
   v_style_class_hset_drop(&g_context.style_classes_by_id);
 
@@ -1162,6 +1172,21 @@ VUID_PRIVATE VContext* v_ctx(void) {
 
 VUID_PRIVATE bool v_ctx__has_gfx_feature(VGfxFeature feature) {
   return (g_context.gfx_features & feature) != 0;
+}
+
+VUID_PRIVATE VArray* v_ctx__get_event_path(void) {
+  return &g_context.event_path;
+}
+
+VUID_PRIVATE void v_ctx__clear_event_path(void) {
+  VNode** items = g_context.event_path.items;
+  const size_t size = g_context.event_path.size;
+
+  for (size_t i = 0; i < size; i++) {
+    v_node_unref(items[i]);
+  }
+
+  v_array_clear(&g_context.event_path);
 }
 
 /*
@@ -1516,27 +1541,26 @@ void v_inject_mouse_button(const VMouseButtonData* data) {
 
   VNode* root = v_root();
   VContext* ctx = v_ctx();
-  VNode* target = NULL;
   VRect initial_clip = {0, 0, 1e9f, 1e9f};
-  VNode** items = (VNode**)ctx->popover_stack.items;
   const float x = data->x;
   const float y = data->y;
   const bool down = data->down;
 
-  // 1. Popover Hit Testing (Top to Bottom)
-  for (size_t i = ctx->popover_stack.size; i-- > 0;) {
-    target = v_node__hit_test_recursive(items[i], 0, 0, x, y, initial_clip);
-    if (target)
-      break;
-  }
-
-  // 2. Normal Tree Hit Testing
-  if (!target) {
-    target = v_node__hit_test_recursive(root, 0, 0, x, y, initial_clip);
-  }
-
   if (down) {
-    items = (VNode**)ctx->popover_stack.items;
+    VNode** items = ctx->popover_stack.items;
+    VNode* target = NULL;
+
+    // 1. Popover Hit Testing (Top to Bottom)
+    for (size_t i = ctx->popover_stack.size; i-- > 0;) {
+      target = v_node__hit_test_recursive(items[i], 0, 0, x, y, initial_clip);
+      if (target)
+        break;
+    }
+
+    // 2. Normal Tree Hit Testing
+    if (!target) {
+      target = v_node__hit_test_recursive(root, 0, 0, x, y, initial_clip);
+    }
 
     // Light Dismiss for AUTO and HINT popovers
     for (size_t i = ctx->popover_stack.size; i-- > 0;) {
@@ -1591,14 +1615,34 @@ void v_inject_mouse_button(const VMouseButtonData* data) {
 
     if (target_node == ctx->active_node && target_node != NULL &&
         ctx->drag_node == NULL) {
-      // TODO: what if target_node is removed, freed?
-      VEvent event = {V_EVENT_CLICK, target_node};
+      // use web dispatch strategy of capturing the event path first, then
+      // dispatching, to allow for cases where event handlers might remove nodes
+      // from the tree (including the target node itself)
+
+      VArray* event_path = v_ctx__get_event_path();
+      assert(event_path->size == 0);
+
+      // capture the event path
       for (VNode* curr = target_node; curr; curr = v_node_parent(curr)) {
-        if (curr->event_listeners[V_EVENT_CLICK]) {
-          curr->event_listeners[V_EVENT_CLICK](curr, &event);
+        v_node_ref(curr);
+        v_array_push(event_path, &curr);
+      }
+
+      VEvent event = {V_EVENT_CLICK, target_node};
+
+      v_node_ref(target_node);
+
+      for (size_t i = 0; i < event_path->size; i++) {
+        VNode* node = ((VNode**)event_path->items)[i];
+        if (node->event_listeners[V_EVENT_CLICK]) {
+          node->event_listeners[V_EVENT_CLICK](node, &event);
+          // TODO: this should bubble, not sure why the break is here ???
           break;
         }
       }
+
+      v_node_unref(target_node);
+      v_ctx__clear_event_path();
     }
 
     ctx->active_node = NULL;
@@ -1633,7 +1677,7 @@ void v_inject_mouse_move(const VMouseMoveData* data) {
 
   VRect initial_clip = {0, 0, 1e9f, 1e9f};
   VNode* new_hovered = NULL;
-  VNode** items = (VNode**)context->popover_stack.items;
+  VNode** items = context->popover_stack.items;
 
   // 1. Popover Hit Testing (Top to Bottom)
   for (size_t i = context->popover_stack.size; i-- > 0;) {
@@ -1648,7 +1692,7 @@ void v_inject_mouse_move(const VMouseMoveData* data) {
     new_hovered = v_node__hit_test_recursive(root, 0, 0, x, y, initial_clip);
   }
 
-  items = (VNode**)context->popover_stack.items;
+  items = context->popover_stack.items;
 
   // Dismiss HINT popovers when cursor leaves their subtree
   for (size_t i = context->popover_stack.size; i-- > 0;) {
@@ -1659,34 +1703,67 @@ void v_inject_mouse_move(const VMouseMoveData* data) {
     }
   }
 
-  if (new_hovered == context->hovered_node)
+  VNode* hovered_node = context->hovered_node;
+
+  if (new_hovered == hovered_node)
     return;
 
-  VNode* fca = v_node__find_common_ancestor(context->hovered_node, new_hovered);
+  VArray* event_path = v_ctx__get_event_path();
+  VNode** event_path_items = (VNode**)event_path->items;
+  assert(event_path->size == 0);
+  VNode* fca = v_node__find_common_ancestor(hovered_node, new_hovered);
 
-  // 1. Leave events (up to FCA)
-  for (VNode* curr = context->hovered_node; curr && curr != fca;
+  // leave event path: hovered_node -> fca (exclusive)
+  for (VNode* curr = hovered_node; curr && curr != fca;
        curr = v_node_parent(curr)) {
+    v_node_ref(curr);
+    v_array_push(event_path, &curr);
+  }
+
+  const size_t enter_start_index = event_path->size;
+
+  // enter event path: new_hovered -> fca (exclusive)
+  for (VNode* curr = new_hovered; curr && curr != fca;
+       curr = v_node_parent(curr)) {
+    v_node_ref(curr);
+    v_array_push(event_path, &curr);
+  }
+
+  v_node_ref(new_hovered);
+  v_node_ref(hovered_node);
+
+  // dispatch leave events in order from hovered_node to fca
+  for (size_t i = 0; i < enter_start_index; i++) {
+    VNode* curr = event_path_items[i];
     v_node__clear_flag(curr, V_NODEFLAG_HOVERED);
     if (curr->event_listeners[V_EVENT_MOUSE_LEAVE]) {
-      // TODO: what if target is removed, freed?
       VEvent event = {V_EVENT_MOUSE_LEAVE, curr};
       curr->event_listeners[V_EVENT_MOUSE_LEAVE](curr, &event);
     }
   }
 
-  // 2. Enter events (up to FCA)
-  for (VNode* curr = new_hovered; curr && curr != fca;
-       curr = v_node_parent(curr)) {
+  // dispatch enter events in order from fca to new_hovered
+  for (size_t i = enter_start_index; i < event_path->size; i++) {
+    VNode* curr = event_path_items[i];
     v_node__set_flag(curr, V_NODEFLAG_HOVERED);
     if (curr->event_listeners[V_EVENT_MOUSE_ENTER]) {
-      // TODO: what if target is removed, freed?
       VEvent event = {V_EVENT_MOUSE_ENTER, curr};
       curr->event_listeners[V_EVENT_MOUSE_ENTER](curr, &event);
     }
   }
 
-  context->hovered_node = new_hovered;
+  // if we are the last holder of new_hovered, it was removed / deleted
+  // during event dispatch. if that is the case, we should not store this ref in
+  // the context.
+  if (new_hovered && new_hovered->ref_count == 1) {
+    context->hovered_node = NULL;
+  } else {
+    context->hovered_node = new_hovered;
+  }
+
+  v_node_unref(new_hovered);
+  v_node_unref(hovered_node);
+  v_ctx__clear_event_path();
 }
 
 void v_inject_mouse_wheel(const VMouseWheelData* data) {
