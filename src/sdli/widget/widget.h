@@ -89,6 +89,19 @@ VNode* ButtonWithId(const char* id,
 void Button_SetLabel(VNode* node, const char* text);
 
 /*
+ * Overlay is a modal or non-modal dialog box. The app has an overlay layer
+ * attached to root above the screen layer. One overlay can be shown at a time
+ * (no stacking).
+ */
+
+/* Create a new overlay layer for attachment to the root. */
+VNode* OverlayLayer(void);
+/* Show an overlay. The style of the overlay is defined by the caller. */
+void Overlay_Show(VNode* overlay, bool modal);
+/* Dismiss the currently shown overlay. */
+void Overlay_Dismiss(void);
+
+/*
  * State is global UI information that is needed between pages and screens, like
  * the current locale. State is distinct from a model, as models are
  * representing SDL or platform state. Technically, State is not in the scene

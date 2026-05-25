@@ -58,6 +58,8 @@
 #define CLS_LIST_ITEM_VALUE_TEXT "li-value-text"
 #define CLS_SCROLLABLE "sbox"
 #define CLS_SCROLLABLE_LIST "slist"
+#define CLS_OVERLAY "overlay"
+#define CLS_OVERLAY_LAYER "overlay-layer"
 // TODO: temporary
 #define CLS_BUTTON_ROW "btn-group"
 

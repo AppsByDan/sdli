@@ -30,6 +30,7 @@ int main(int argc, char** argv)
 
   v_node_style_assign_class(v_root(), CLS_ROOT);
   v_node_append_child(v_root(), ScreenNavigator());
+  v_node_append_child(v_root(), OverlayLayer());
 
   ScreenNavigator_Goto(SCREENID_HOME);
 

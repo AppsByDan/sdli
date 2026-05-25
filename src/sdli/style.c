@@ -149,4 +149,21 @@ void LoadStyleSheet(void)
   {
     vs_set_gap(S, THEME_SP_SM);
   }
+
+  vss_extend(S, CLS_OVERLAY, CLS_FILL)
+  {
+    // TODO: not sure about sizing..
+    vs_set_width(S, V_FIXED(400));
+    vs_set_height(S, V_FIXED(200));
+    vs_set_xalign(S, V_ALIGN_X_CENTER);
+    vs_set_yalign(S, V_ALIGN_Y_CENTER);
+  }
+
+  vss_extend(S, CLS_OVERLAY_LAYER, CLS_FILL)
+  {
+    vs_set_position(S, V_POSITION_ABSOLUTE);
+    vs_set_xalign(S, V_ALIGN_X_CENTER);
+    vs_set_yalign(S, V_ALIGN_Y_CENTER);
+    vs_set_background(S, v_rgba(0, 0, 0, 128));
+  }
 }
