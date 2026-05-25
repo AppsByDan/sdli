@@ -1212,10 +1212,8 @@ VUID_PRIVATE void v_ctx__remove_input_node(VNode* node) {
  * - caller is responsible for node state cleanup
  */
 VUID_PRIVATE void v_ctx__remove_popover_node(VNode* node) {
-  VNode** items = (VNode**)g_context.popover_stack.items;
-
   for (size_t i = 0; i < g_context.popover_stack.size; i++) {
-    if (items[i] == node) {
+    if (((VNode**)g_context.popover_stack.items)[i] == node) {
       v_array_remove(&g_context.popover_stack, i);
       break;
     }
@@ -1266,11 +1264,10 @@ void v_draw(void) {
       }
     }
 
-    VNode** items = (VNode**)ctx->popover_stack.items;
-
     for (size_t i = 0; i < ctx->popover_stack.size; i++) {
       // popover bounds are absolute
-      v_node_draw_recursive(items[i], 0, 0, initial_clip);
+      v_node_draw_recursive(((VNode**)ctx->popover_stack.items)[i], 0, 0,
+                            initial_clip);
     }
   }
 }
@@ -1303,10 +1300,6 @@ static void v_node_draw_recursive(VNode* node,
   const bool has_background_color = vs_has_prop(style, VS_BACKGROUND);
   const VGfxContext* gfx = v_gfx();
   float border_radius = vs_get_border_radius(style);
-
-  if (border_radius == 50) {
-    printf("border radius 50\n");
-  }
 
   if (border_radius > 0) {
     const float half_width = node->bounds.width / 2.0f;
@@ -1545,37 +1538,37 @@ void v_inject_mouse_button(const VMouseButtonData* data) {
   const float x = data->x;
   const float y = data->y;
   const bool down = data->down;
+  VArray* popover_stack = &ctx->popover_stack;
+  VNode* target_node = NULL;
+
+  // 1. Popover Hit Testing (Top to Bottom)
+  for (size_t i = popover_stack->size; i-- > 0;) {
+    target_node = v_node__hit_test_recursive(((VNode**)popover_stack->items)[i],
+                                             0, 0, x, y, initial_clip);
+    if (target_node)
+      break;
+  }
+
+  // 2. Normal Tree Hit Testing
+  if (!target_node) {
+    target_node = v_node__hit_test_recursive(root, 0, 0, x, y, initial_clip);
+  }
 
   if (down) {
-    VNode** items = ctx->popover_stack.items;
-    VNode* target = NULL;
-
-    // 1. Popover Hit Testing (Top to Bottom)
-    for (size_t i = ctx->popover_stack.size; i-- > 0;) {
-      target = v_node__hit_test_recursive(items[i], 0, 0, x, y, initial_clip);
-      if (target)
-        break;
-    }
-
-    // 2. Normal Tree Hit Testing
-    if (!target) {
-      target = v_node__hit_test_recursive(root, 0, 0, x, y, initial_clip);
-    }
-
     // Light Dismiss for AUTO and HINT popovers
-    for (size_t i = ctx->popover_stack.size; i-- > 0;) {
-      VNode* stack_node = items[i];
+    for (size_t i = popover_stack->size; i-- > 0;) {
+      VNode* stack_node = ((VNode**)popover_stack->items)[i];
       const VPopover type = stack_node->popover_type;
       if ((type == V_POPOVER_AUTO || type == V_POPOVER_HINT) &&
-          !v_node__is_descendant_of(target, stack_node)) {
+          !v_node__is_descendant_of(target_node, stack_node)) {
         v_node_hide_popover(stack_node);
       }
     }
 
-    ctx->active_node = target;
+    ctx->active_node = target_node;
 
     // Check for scrollbar hit
-    for (VNode* curr = target; curr; curr = v_node_parent(curr)) {
+    for (VNode* curr = target_node; curr; curr = v_node_parent(curr)) {
       const VStyle* curr_style = v_node__style_or_empty(curr);
 
       if (vs_get_overflow(curr_style) == V_OVERFLOW_SCROLL) {
@@ -1610,9 +1603,6 @@ void v_inject_mouse_button(const VMouseButtonData* data) {
       }
     }
   } else {
-    VNode* target_node =
-        v_node__hit_test_recursive(root, 0, 0, x, y, initial_clip);
-
     if (target_node == ctx->active_node && target_node != NULL &&
         ctx->drag_node == NULL) {
       // use web dispatch strategy of capturing the event path first, then
@@ -1677,12 +1667,12 @@ void v_inject_mouse_move(const VMouseMoveData* data) {
 
   VRect initial_clip = {0, 0, 1e9f, 1e9f};
   VNode* new_hovered = NULL;
-  VNode** items = context->popover_stack.items;
+  VArray* popover_stack = &context->popover_stack;
 
   // 1. Popover Hit Testing (Top to Bottom)
-  for (size_t i = context->popover_stack.size; i-- > 0;) {
-    new_hovered =
-        v_node__hit_test_recursive(items[i], 0, 0, x, y, initial_clip);
+  for (size_t i = popover_stack->size; i-- > 0;) {
+    new_hovered = v_node__hit_test_recursive(((VNode**)popover_stack->items)[i],
+                                             0, 0, x, y, initial_clip);
     if (new_hovered)
       break;
   }
@@ -1692,11 +1682,9 @@ void v_inject_mouse_move(const VMouseMoveData* data) {
     new_hovered = v_node__hit_test_recursive(root, 0, 0, x, y, initial_clip);
   }
 
-  items = context->popover_stack.items;
-
   // Dismiss HINT popovers when cursor leaves their subtree
-  for (size_t i = context->popover_stack.size; i-- > 0;) {
-    VNode* stack_node = items[i];
+  for (size_t i = popover_stack->size; i-- > 0;) {
+    VNode* stack_node = ((VNode**)popover_stack->items)[i];
     if (stack_node->popover_type == V_POPOVER_HINT &&
         !v_node__is_descendant_of(new_hovered, stack_node)) {
       v_node_hide_popover(stack_node);
@@ -1709,7 +1697,6 @@ void v_inject_mouse_move(const VMouseMoveData* data) {
     return;
 
   VArray* event_path = v_ctx__get_event_path();
-  VNode** event_path_items = (VNode**)event_path->items;
   assert(event_path->size == 0);
   VNode* fca = v_node__find_common_ancestor(hovered_node, new_hovered);
 
@@ -1734,7 +1721,7 @@ void v_inject_mouse_move(const VMouseMoveData* data) {
 
   // dispatch leave events in order from hovered_node to fca
   for (size_t i = 0; i < enter_start_index; i++) {
-    VNode* curr = event_path_items[i];
+    VNode* curr = ((VNode**)event_path->items)[i];
     v_node__clear_flag(curr, V_NODEFLAG_HOVERED);
     if (curr->event_listeners[V_EVENT_MOUSE_LEAVE]) {
       VEvent event = {V_EVENT_MOUSE_LEAVE, curr};
@@ -1744,7 +1731,7 @@ void v_inject_mouse_move(const VMouseMoveData* data) {
 
   // dispatch enter events in order from fca to new_hovered
   for (size_t i = enter_start_index; i < event_path->size; i++) {
-    VNode* curr = event_path_items[i];
+    VNode* curr = ((VNode**)event_path->items)[i];
     v_node__set_flag(curr, V_NODEFLAG_HOVERED);
     if (curr->event_listeners[V_EVENT_MOUSE_ENTER]) {
       VEvent event = {V_EVENT_MOUSE_ENTER, curr};
@@ -1871,6 +1858,10 @@ static VNode* v_node__hit_test_recursive(VNode* node,
 
   // 3. Check children in reverse order (top-most first)
   for (VNode* child = node->last_child; child; child = child->prev_sibling) {
+    // Popover nodes have absolute-space bounds.x/y; skip them here since they
+    // are hit-tested directly from the popover stack with abs_x/y = 0.
+    if (child->popover_type != V_POPOVER_NONE)
+      continue;
     VNode* hit = v_node__hit_test_recursive(child, current_abs_x,
                                             current_abs_y - node->scroll_y, mx,
                                             my, next_clip);
@@ -3567,10 +3558,8 @@ bool v_node_show_popover(VNode* node) {
   VContext* ctx = v_ctx();
 
   if (node->popover_type == V_POPOVER_AUTO) {
-    VNode** items = (VNode**)ctx->popover_stack.items;
-
     for (size_t i = ctx->popover_stack.size; i-- > 0;) {
-      VNode* stack_node = items[i];
+      VNode* stack_node = ((VNode**)ctx->popover_stack.items)[i];
       if (stack_node->popover_type == V_POPOVER_AUTO &&
           !v_node__is_descendant_of(node, stack_node)) {
         v_node_hide_popover(stack_node);
