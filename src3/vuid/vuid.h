@@ -51,6 +51,12 @@ typedef struct VGfxContext {
   void* user_data[4];
 } VGfxContext;
 
+typedef enum VPosition {
+  V_POSITION_STATIC,
+  V_POSITION_RELATIVE,
+  V_POSITION_ABSOLUTE,
+} VPosition;
+
 typedef enum VDirection {
   V_DIRECTION_ROW,
   V_DIRECTION_COLUMN,
@@ -810,6 +816,31 @@ void       vs_set_aspect_ratio(VStyle* style, float value);
 float      vs_get_aspect_ratio(const VStyle* style);
 void       vs_unset_aspect_ratio(VStyle* style);
 bool       vs_has_aspect_ratio(const VStyle* style);
+
+void       vs_set_position(VStyle* style, VPosition value);
+VPosition  vs_get_position(const VStyle* style);
+void       vs_unset_position(VStyle* style);
+bool       vs_has_position(const VStyle* style);
+
+void       vs_set_top(VStyle* style, float value);
+float      vs_get_top(const VStyle* style);
+void       vs_unset_top(VStyle* style);
+bool       vs_has_top(const VStyle* style);
+
+void       vs_set_right(VStyle* style, float value);
+float      vs_get_right(const VStyle* style);
+void       vs_unset_right(VStyle* style);
+bool       vs_has_right(const VStyle* style);
+
+void       vs_set_bottom(VStyle* style, float value);
+float      vs_get_bottom(const VStyle* style);
+void       vs_unset_bottom(VStyle* style);
+bool       vs_has_bottom(const VStyle* style);
+
+void       vs_set_left(VStyle* style, float value);
+float      vs_get_left(const VStyle* style);
+void       vs_unset_left(VStyle* style);
+bool       vs_has_left(const VStyle* style);
 
 static inline void vs_set_padding(VStyle* style, uint16_t t, uint16_t r, uint16_t b, uint16_t l) {
   vs_set_padding_top(style, t);

@@ -651,6 +651,11 @@ typedef enum VStyleProperty {
   VS_ATTACH_POINT_OFFSET_X,
   VS_ATTACH_POINT_OFFSET_Y,
   VS_ASPECT_RATIO,
+  VS_POSITION,
+  VS_TOP,
+  VS_RIGHT,
+  VS_BOTTOM,
+  VS_LEFT,
   VS__STYLE_PROPERTY_COUNT,
 } VStyleProperty;
 
@@ -674,6 +679,7 @@ struct VStyle {
   VAttachPointX attach_point_x;
   VAttachPointY attach_point_y;
   VOverflow overflow;
+  VPosition position;
   uint16_t font;
   uint16_t font_size;
   uint16_t gap;
@@ -688,6 +694,10 @@ struct VStyle {
   uint16_t border_radius;
   uint16_t scrollbar_width;
   uint16_t scrollbar_border_radius;
+  float top;
+  float right;
+  float bottom;
+  float left;
   float attach_point_offset_x;
   float attach_point_offset_y;
   float aspect_ratio;
@@ -1809,7 +1819,25 @@ static void v_node__get_abs_pos(const VNode* node, float* x, float* y) {
   }
 }
 
-// TODO: visibility checks need a review
+/*
+ * TODO: there are a lot of checks for visible, popover and absolute as we go
+ * through the passes because these nodes are deferred to a later pass. these
+ * are messy checks that happen over and over. need to find a cleaner way to
+ * handle this. maybe a flag or something..
+ *
+ * TODO: right now styles are not computed or resolved until needed in the
+ * layout pass this is making the code more complicated and less efficient. I
+ * have not decided the best way to handle this.
+ */
+
+static inline bool v_style__is_absolute(const VStyle* style) {
+  return vs_has_prop(style, VS_POSITION) &&
+         style->position == V_POSITION_ABSOLUTE;
+}
+
+static inline bool v_node__is_absolute(const VNode* child) {
+  return child->style ? v_style__is_absolute(child->style) : false;
+}
 
 static VSize v__compute_text_pref_size(VNode* node) {
   // TODO: there should be a style resolution step to resolve font info
@@ -1876,6 +1904,8 @@ static void v_layout_pass1_width(VNode* node) {
       v_foreach_child(node, child) {
         if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
           continue;
+        if (v_node__is_absolute(child))
+          continue;
         visible_children++;
         // For wrap, min_width is the widest single child (worst case: one per
         // row). pref_width is still the sum (preferred: all on one row).
@@ -1899,6 +1929,8 @@ static void v_layout_pass1_width(VNode* node) {
       v_foreach_child(node, child) {
         if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
           continue;
+        if (v_node__is_absolute(child))
+          continue;
         min_w = fmaxf(min_w, child->min_width);
         pref_w = fmaxf(pref_w, child->pref_width);
       }
@@ -1906,8 +1938,8 @@ static void v_layout_pass1_width(VNode* node) {
   }
 
   float ar = 0;
-  if (vs_has_aspect_ratio(style)) {
-    ar = vs_get_aspect_ratio(style);
+  if (vs_has_prop(style, VS_ASPECT_RATIO)) {
+    ar = style->aspect_ratio;
   } else if (node->tag == V_NODE_IMAGE) {
     // TODO: not sure about this. might need to support aspect-ratio = auto
     const VSize size = v__compute_image_pref_size(node);
@@ -1954,16 +1986,34 @@ static void v_layout_pass2_width_dist(VNode* node, float width) {
   int visible_children = 0;
 
   // 1: visible popovers need a pass2 for their children
-  // 2: count visible, non-popover children
+  // 2: absolute children get their width resolved out-of-flow
+  // 3: count visible, non-popover, non-absolute children
+  const VStyle* style = v_node__style_or_empty(node);
+  const float inner_w = width - (vs_get_pl(style) + vs_get_pr(style) +
+                                 vs_get_bl(style) + vs_get_br(style));
+
   v_foreach_child(node, child) {
     if (v_node_is_visible(child)) {
+      const VStyle* child_style = v_node__style_or_empty(child);
+      float cw;
+
       if (child->popover_type != V_POPOVER_NONE) {
-        float cw;
-        const VStyle* child_style = v_node__style_or_empty(child);
         if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
           cw = (vs_get_anchor_to(child_style) == V_ANCHOR_TO_ROOT)
                    ? v_root()->bounds.width
                    : width;
+        } else {
+          cw = child->pref_width;
+        }
+        v_layout_pass2_width_dist(child, cw);
+      } else if (v_style__is_absolute(child_style)) {
+        const VSizingTag wtag = vs__get_width_tag(child_style);
+        if (wtag == V_SIZING_GROW) {
+          cw = inner_w;
+        } else if (wtag == V_SIZING_FIT && vs_has_prop(child_style, VS_LEFT) &&
+                   vs_has_prop(child_style, VS_RIGHT)) {
+          cw = fmaxf(0.0f, inner_w - vs_get_left(child_style) -
+                               vs_get_right(child_style));
         } else {
           cw = child->pref_width;
         }
@@ -1977,10 +2027,7 @@ static void v_layout_pass2_width_dist(VNode* node, float width) {
   if (visible_children == 0)
     return;
 
-  const VStyle* style = v_node__style_or_empty(node);
   const VDirection dir = vs_get_direction(style);
-  const float inner_w = width - (vs_get_pl(style) + vs_get_pr(style) +
-                                 vs_get_bl(style) + vs_get_br(style));
   const float gap = vs_get_gap(style);
 
   if (dir == V_DIRECTION_ROW) {
@@ -1989,7 +2036,13 @@ static void v_layout_pass2_width_dist(VNode* node, float width) {
     v_foreach_child(node, child) {
       if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
         continue;
-      if (vs__get_width_tag(v_node__style_or_empty(child)) == V_SIZING_GROW) {
+
+      const VStyle* child_style = v_node__style_or_empty(child);
+
+      if (v_style__is_absolute(child_style))
+        continue;
+
+      if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
         grow_count++;
       } else {
         fixed_w += child->pref_width;
@@ -2012,8 +2065,14 @@ static void v_layout_pass2_width_dist(VNode* node, float width) {
       v_foreach_child(node, child) {
         if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
           continue;
-        if (vs__get_width_tag(v_node__style_or_empty(child)) != V_SIZING_GROW)
+
+        const VStyle* child_style = v_node__style_or_empty(child);
+
+        if (v_style__is_absolute(child_style))
           continue;
+        if (vs__get_width_tag(child_style) != V_SIZING_GROW)
+          continue;
+
         if (child->min_width > per_grow) {
           new_clamped += child->min_width;
         } else {
@@ -2034,8 +2093,14 @@ static void v_layout_pass2_width_dist(VNode* node, float width) {
     v_foreach_child(node, child) {
       if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
         continue;
+
+      const VStyle* child_style = v_node__style_or_empty(child);
+
+      if (v_style__is_absolute(child_style))
+        continue;
+
       float cw;
-      if (vs__get_width_tag(v_node__style_or_empty(child)) == V_SIZING_GROW) {
+      if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
         cw = fmaxf(child->min_width, grow_w);
       } else {
         cw = child->pref_width;
@@ -2047,8 +2112,13 @@ static void v_layout_pass2_width_dist(VNode* node, float width) {
     v_foreach_child(node, child) {
       if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
         continue;
+
+      const VStyle* child_style = v_node__style_or_empty(child);
+
+      if (v_style__is_absolute(child_style))
+        continue;
       float cw;
-      if (vs__get_width_tag(v_node__style_or_empty(child)) == V_SIZING_GROW) {
+      if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
         cw = inner_w;
       } else {
         cw = child->pref_width;
@@ -2114,6 +2184,8 @@ static void v_layout_pass3_height(VNode* node) {
       v_foreach_child(node, child) {
         if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
           continue;
+        if (v_node__is_absolute(child))
+          continue;
         visible_children++;
         cross_pref = fmaxf(cross_pref, child->pref_height);
         cross_min = fmaxf(cross_min, child->min_height);
@@ -2123,6 +2195,8 @@ static void v_layout_pass3_height(VNode* node) {
     } else if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_NONE) {
       v_foreach_child(node, child) {
         if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
+          continue;
+        if (v_node__is_absolute(child))
           continue;
         visible_children++;
         main_min += child->min_height;
@@ -2148,6 +2222,8 @@ static void v_layout_pass3_height(VNode* node) {
 
       v_foreach_child(node, child) {
         if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
+          continue;
+        if (v_node__is_absolute(child))
           continue;
         if (current_row_w > 0 &&
             current_row_w + child->bounds.width > inner_w) {
@@ -2175,6 +2251,8 @@ static void v_layout_pass3_height(VNode* node) {
       v_foreach_child(node, child) {
         if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
           continue;
+        if (v_node__is_absolute(child))
+          continue;
         if (current_col_h > 0 && current_col_h + child->pref_height > inner_h) {
           current_col_h = 0;
         }
@@ -2185,8 +2263,8 @@ static void v_layout_pass3_height(VNode* node) {
   }
 
   float ar = 0;
-  if (vs_has_aspect_ratio(style)) {
-    ar = vs_get_aspect_ratio(style);
+  if (vs_has_prop(style, VS_ASPECT_RATIO)) {
+    ar = style->aspect_ratio;
   } else if (node->tag == V_NODE_IMAGE) {
     const VSize size = v__compute_image_pref_size(node);
     if (size.width > 0) {
@@ -2238,17 +2316,35 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
 
   int visible_children = 0;
 
-  // 1: visible popovers need a pass5 for their children
-  // 2: count visible, non-popover children
+  // 1: visible popovers need a pass4 for their children
+  // 2: absolute children get their height resolved out-of-flow
+  // 3: count visible, non-popover, non-absolute children
+  const VStyle* style = v_node__style_or_empty(node);
+  const float inner_h = height - (vs_get_pt(style) + vs_get_pb(style) +
+                                  vs_get_bt(style) + vs_get_bb(style));
+
   v_foreach_child(node, child) {
     if (v_node_is_visible(child)) {
+      float ch;
+      const VStyle* child_style = v_node__style_or_empty(child);
+
       if (child->popover_type != V_POPOVER_NONE) {
-        const VStyle* child_style = v_node__style_or_empty(child);
-        float ch;
         if (vs__get_height_tag(child_style) == V_SIZING_GROW) {
           ch = (vs_get_anchor_to(child_style) == V_ANCHOR_TO_ROOT)
                    ? v_root()->bounds.height
                    : height;
+        } else {
+          ch = child->pref_height;
+        }
+        v_layout_pass4_height_dist(child, ch);
+      } else if (v_style__is_absolute(child_style)) {
+        const VSizingTag htag = vs__get_height_tag(child_style);
+        if (htag == V_SIZING_GROW) {
+          ch = inner_h;
+        } else if (htag == V_SIZING_FIT && vs_has_prop(child_style, VS_TOP) &&
+                   vs_has_prop(child_style, VS_BOTTOM)) {
+          ch = fmaxf(0.0f, inner_h - vs_get_top(child_style) -
+                               vs_get_bottom(child_style));
         } else {
           ch = child->pref_height;
         }
@@ -2262,11 +2358,8 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
   if (visible_children == 0)
     return;
 
-  const VStyle* style = v_node__style_or_empty(node);
   const VDirection dir = vs_get_direction(style);
   const VWrap wrap = vs_get_wrap(style);
-  const float inner_h = height - (vs_get_pt(style) + vs_get_pb(style) +
-                                  vs_get_bt(style) + vs_get_bb(style));
   const float gap = vs_get_gap(style);
 
   if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_NONE) {
@@ -2275,7 +2368,12 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
     v_foreach_child(node, child) {
       if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
         continue;
+
       const VStyle* child_style = v_node__style_or_empty(child);
+
+      if (v_style__is_absolute(child_style))
+        continue;
+
       if (vs__get_height_tag(child_style) == V_SIZING_GROW) {
         if (vs_has_aspect_ratio(child_style)) {
           fixed_h += child->pref_height;
@@ -2293,17 +2391,22 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
     for (int round = 0; round < grow_count; round++) {
       if (unclamped == 0)
         break;
-      float per_grow =
+      const float per_grow =
           fmaxf(0.0f, (inner_h - fixed_h - clamped_total) / unclamped);
       int new_unclamped = 0;
       float new_clamped = 0;
       v_foreach_child(node, child) {
         if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
           continue;
+
         const VStyle* child_style = v_node__style_or_empty(child);
+
+        if (v_style__is_absolute(child_style))
+          continue;
+
         if (vs__get_height_tag(child_style) != V_SIZING_GROW)
           continue;
-        if (vs_has_aspect_ratio(child_style))
+        if (vs_has_prop(child_style, VS_ASPECT_RATIO))
           continue;
         if (child->min_height > per_grow) {
           new_clamped += child->min_height;
@@ -2326,9 +2429,14 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
     v_foreach_child(node, child) {
       if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
         continue;
+
       const VStyle* child_style = v_node__style_or_empty(child);
+
+      if (v_style__is_absolute(child_style))
+        continue;
+
       if (vs__get_height_tag(child_style) == V_SIZING_GROW) {
-        ch = vs_has_aspect_ratio(child_style)
+        ch = vs_has_prop(child_style, VS_ASPECT_RATIO)
                  ? child->pref_height
                  : fmaxf(child->min_height, grow_h);
       } else {
@@ -2342,9 +2450,15 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
     v_foreach_child(node, child) {
       if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
         continue;
+
       const VStyle* child_style = v_node__style_or_empty(child);
+
+      if (v_style__is_absolute(child_style))
+        continue;
+
       if (vs__get_height_tag(child_style) == V_SIZING_GROW) {
-        ch = vs_has_aspect_ratio(child_style) ? child->pref_height : inner_h;
+        ch = vs_has_prop(child_style, VS_ASPECT_RATIO) ? child->pref_height
+                                                       : inner_h;
       } else {
         ch = child->pref_height;
       }
@@ -2353,6 +2467,8 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
   } else if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_WRAP) {
     v_foreach_child(node, child) {
       if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
+        continue;
+      if (v_node__is_absolute(child))
         continue;
       v_layout_pass4_height_dist(child, child->pref_height);
     }
@@ -2368,6 +2484,8 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
     v_foreach_child(node, child) {
       if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
         continue;
+      if (v_node__is_absolute(child))
+        continue;
 
       if (current_row_w > 0 && current_row_w + child->bounds.width > inner_w) {
         // Flush the completed row: assign its height to every member.
@@ -2375,7 +2493,12 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
         for (VNode* c = row_start; c != child; c = v_node_next_sibling(c)) {
           if (!v_node_is_visible(c) || c->popover_type != V_POPOVER_NONE)
             continue;
-          ch = (vs__get_height_tag(v_node__style_or_empty(c)) == V_SIZING_GROW)
+
+          const VStyle* child_style = v_node__style_or_empty(c);
+
+          if (v_style__is_absolute(child_style))
+            continue;
+          ch = (vs__get_height_tag(child_style) == V_SIZING_GROW)
                    ? current_row_h
                    : c->pref_height;
           v_layout_pass4_height_dist(c, ch);
@@ -2396,11 +2519,39 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
     for (VNode* c = row_start; c != NULL; c = v_node_next_sibling(c)) {
       if (!v_node_is_visible(c) || c->popover_type != V_POPOVER_NONE)
         continue;
-      ch = (vs__get_height_tag(v_node__style_or_empty(c)) == V_SIZING_GROW)
-               ? current_row_h
-               : c->pref_height;
+
+      const VStyle* child_style = v_node__style_or_empty(c);
+
+      if (v_style__is_absolute(child_style))
+        continue;
+      ch = (vs__get_height_tag(child_style) == V_SIZING_GROW) ? current_row_h
+                                                              : c->pref_height;
       v_layout_pass4_height_dist(c, ch);
     }
+  }
+}
+
+// x offset of relative-positioned nodes
+static float v__get_relative_offset_x(const VStyle* child_style) {
+  // can't use both left and right. resolve by favoring left.
+  if (vs_has_prop(child_style, VS_LEFT)) {
+    return child_style->left;
+  } else if (vs_has_prop(child_style, VS_RIGHT)) {
+    return -child_style->right;
+  } else {
+    return 0;
+  }
+}
+
+// y offset of relative-positioned nodes
+static float v__get_relative_offset_y(const VStyle* child_style) {
+  // can't use both top and bottom. resolve by favoring top.
+  if (vs_has_prop(child_style, VS_TOP)) {
+    return child_style->top;
+  } else if (vs_has_prop(child_style, VS_BOTTOM)) {
+    return -child_style->bottom;
+  } else {
+    return 0;
   }
 }
 
@@ -2416,18 +2567,27 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
   const float gap = vs_get_gap(style);
   const float pl = vs_get_pl(style);
   const float pt = vs_get_pt(style);
+  const float pr = vs_get_pr(style);
+  const float pb = vs_get_pb(style);
   const float bl = vs_get_bl(style);
   const float bt = vs_get_bt(style);
+  const float br = vs_get_br(style);
+  const float bb = vs_get_bb(style);
+  const float origin_x = pl + bl;
+  const float origin_y = pt + bt;
+  const float inner_w = node->bounds.width - (pl + pr + bl + br);
+  const float inner_h = node->bounds.height - (pt + pb + bt + bb);
 
-  float cur_x = pl + bl;
-  float cur_y = pt + bt;
+  float cur_x = origin_x;
+  float cur_y = origin_y;
 
   if (dir == V_DIRECTION_ROW && wrap == V_WRAP_NONE) {
-    // Alignment along main axis (X)
+    // Alignment along main axis (X): only flow children count.
     float total_w = 0;
     int visible_count = 0;
     v_foreach_child(node, child) {
-      if (v_node_is_visible(child) && child->popover_type == V_POPOVER_NONE) {
+      if (v_node_is_visible(child) && child->popover_type == V_POPOVER_NONE &&
+          !v_node__is_absolute(child)) {
         total_w += child->bounds.width;
         visible_count++;
       }
@@ -2435,8 +2595,6 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
     if (visible_count > 1)
       total_w += (visible_count - 1) * gap;
 
-    const float inner_w =
-        node->bounds.width - (pl + vs_get_pr(style) + bl + vs_get_br(style));
     const VAlignX ax = vs_get_xalign(style);
     if (ax == V_ALIGN_X_CENTER)
       cur_x += fmaxf(0, (inner_w - total_w) / 2.0f);
@@ -2450,24 +2608,34 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
         v_layout_pass5_pos(child, 0, 0);
         continue;
       }
+
+      const VStyle* child_style = v_node__style_or_empty(child);
+      const VPosition position = vs_get_position(child_style);
+
+      if (position == V_POSITION_ABSOLUTE)
+        continue;
+
+      float child_x = cur_x;
       float child_y = cur_y;
       const VAlignY ay = vs_get_yalign(style);
-      const float inner_h =
-          node->bounds.height - (pt + vs_get_pb(style) + bt + vs_get_bb(style));
       if (ay == V_ALIGN_Y_CENTER)
         child_y += fmaxf(0, (inner_h - child->bounds.height) / 2.0f);
       else if (ay == V_ALIGN_Y_BOTTOM)
         child_y += fmaxf(0, inner_h - child->bounds.height);
-
-      v_layout_pass5_pos(child, cur_x, child_y);
+      if (position == V_POSITION_RELATIVE) {
+        child_x += v__get_relative_offset_x(child_style);
+        child_y += v__get_relative_offset_y(child_style);
+      }
+      v_layout_pass5_pos(child, child_x, child_y);
       cur_x += child->bounds.width + gap;
     }
   } else if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_NONE) {
-    // Alignment along main axis (Y)
+    // Alignment along main axis (Y): only flow children count.
     float total_h = 0;
     int visible_count = 0;
     v_foreach_child(node, child) {
-      if (v_node_is_visible(child) && child->popover_type == V_POPOVER_NONE) {
+      if (v_node_is_visible(child) && child->popover_type == V_POPOVER_NONE &&
+          !v_node__is_absolute(child)) {
         total_h += child->bounds.height;
         visible_count++;
       }
@@ -2475,8 +2643,6 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
     if (visible_count > 1)
       total_h += (visible_count - 1) * gap;
 
-    const float inner_h =
-        node->bounds.height - (pt + vs_get_pb(style) + bt + vs_get_bb(style));
     const VAlignY ay = vs_get_yalign(style);
     if (ay == V_ALIGN_Y_CENTER)
       cur_y += fmaxf(0, (inner_h - total_h) / 2.0f);
@@ -2490,22 +2656,28 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
         v_layout_pass5_pos(child, 0, 0);
         continue;
       }
+
+      const VStyle* child_style = v_node__style_or_empty(child);
+      const VPosition position = vs_get_position(child_style);
+
+      if (position == V_POSITION_ABSOLUTE)
+        continue;
       float child_x = cur_x;
+      float child_y = cur_y;
       const VAlignX ax = vs_get_xalign(style);
-      const float inner_w =
-          node->bounds.width - (pl + vs_get_pr(style) + bl + vs_get_br(style));
       if (ax == V_ALIGN_X_CENTER)
         child_x += fmaxf(0, (inner_w - child->bounds.width) / 2.0f);
       else if (ax == V_ALIGN_X_RIGHT)
         child_x += fmaxf(0, inner_w - child->bounds.width);
-
-      v_layout_pass5_pos(child, child_x, cur_y);
+      if (position == V_POSITION_RELATIVE) {
+        child_x += v__get_relative_offset_x(child_style);
+        child_y += v__get_relative_offset_y(child_style);
+      }
+      v_layout_pass5_pos(child, child_x, child_y);
       cur_y += child->bounds.height + gap;
     }
   } else if (dir == V_DIRECTION_ROW && wrap == V_WRAP_WRAP) {
     float row_h = 0;
-    const float inner_w =
-        node->bounds.width - (pl + vs_get_pr(style) + bl + vs_get_br(style));
 
     v_foreach_child(node, child) {
       if (!v_node_is_visible(child))
@@ -2514,19 +2686,31 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
         v_layout_pass5_pos(child, 0, 0);
         continue;
       }
-      if (cur_x > pl + bl && cur_x + child->bounds.width > pl + bl + inner_w) {
+
+      const VStyle* child_style = v_node__style_or_empty(child);
+      const VPosition position = vs_get_position(child_style);
+
+      if (position == V_POSITION_ABSOLUTE)
+        continue;
+
+      if (cur_x > origin_x &&
+          cur_x + child->bounds.width > origin_x + inner_w) {
         cur_y += row_h + gap;
-        cur_x = pl + bl;
+        cur_x = origin_x;
         row_h = 0;
       }
-      v_layout_pass5_pos(child, cur_x, cur_y);
+      float child_x = cur_x;
+      float child_y = cur_y;
+      if (position == V_POSITION_RELATIVE) {
+        child_x += v__get_relative_offset_x(child_style);
+        child_y += v__get_relative_offset_y(child_style);
+      }
+      v_layout_pass5_pos(child, child_x, child_y);
       cur_x += child->bounds.width + gap;
       row_h = fmaxf(row_h, child->bounds.height);
     }
   } else if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_WRAP) {
     float col_w = 0;
-    const float inner_h =
-        node->bounds.height - (pt + vs_get_pb(style) + bt + vs_get_bb(style));
 
     v_foreach_child(node, child) {
       if (!v_node_is_visible(child))
@@ -2535,15 +2719,56 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
         v_layout_pass5_pos(child, 0, 0);
         continue;
       }
-      if (cur_y > pt + bt && cur_y + child->bounds.height > pt + bt + inner_h) {
+
+      const VStyle* child_style = v_node__style_or_empty(child);
+      const VPosition position = vs_get_position(child_style);
+
+      if (position == V_POSITION_ABSOLUTE)
+        continue;
+
+      if (cur_y > origin_y &&
+          cur_y + child->bounds.height > origin_y + inner_h) {
         cur_x += col_w + gap;
-        cur_y = pt + bt;
+        cur_y = origin_y;
         col_w = 0;
       }
-      v_layout_pass5_pos(child, cur_x, cur_y);
+      float child_x = cur_x;
+      float child_y = cur_y;
+      if (position == V_POSITION_RELATIVE) {
+        child_x += v__get_relative_offset_x(child_style);
+        child_y += v__get_relative_offset_y(child_style);
+      }
+      v_layout_pass5_pos(child, child_x, child_y);
       cur_y += child->bounds.height + gap;
       col_w = fmaxf(col_w, child->bounds.width);
     }
+  }
+
+  // Position absolute children relative to this node's content origin.
+  v_foreach_child(node, child) {
+    if (!v_node_is_visible(child))
+      continue;
+    const VStyle* child_style = v_node__style_or_empty(child);
+    if (!v_style__is_absolute(child_style))
+      continue;
+    float child_x, child_y;
+    if (vs_has_prop(child_style, VS_LEFT)) {
+      child_x = origin_x + vs_get_left(child_style);
+    } else if (vs_has_prop(child_style, VS_RIGHT)) {
+      child_x =
+          origin_x + inner_w - vs_get_right(child_style) - child->bounds.width;
+    } else {
+      child_x = origin_x;
+    }
+    if (vs_has_prop(child_style, VS_TOP)) {
+      child_y = origin_y + vs_get_top(child_style);
+    } else if (vs_has_prop(child_style, VS_BOTTOM)) {
+      child_y = origin_y + inner_h - vs_get_bottom(child_style) -
+                child->bounds.height;
+    } else {
+      child_y = origin_y;
+    }
+    v_layout_pass5_pos(child, child_x, child_y);
   }
 }
 
@@ -4621,6 +4846,7 @@ typedef enum VStylePropertyTag {
   VSTAG_ENUM_ANCHOR_TO,
   VSTAG_ENUM_ATTACH_POINT_X,
   VSTAG_ENUM_ATTACH_POINT_Y,
+  VSTAG_ENUM_POSITION,
   VSTAG_FLOAT,
 } VStylePropertyTag;
 
@@ -4642,6 +4868,7 @@ typedef struct VStylePropertyMeta {
     VAnchorTo anchor_to;
     VAttachPointX attach_point_x;
     VAttachPointY attach_point_y;
+    VPosition position;
   } default_value;
 
   union {
@@ -4657,6 +4884,7 @@ typedef struct VStylePropertyMeta {
     void (*anchor_to)(VStyle*, VAnchorTo);
     void (*attach_point_x)(VStyle*, VAttachPointX);
     void (*attach_point_y)(VStyle*, VAttachPointY);
+    void (*position)(VStyle*, VPosition);
     void (*text_wrap)(VStyle*, VTextWrap);
   } set_fn;
 
@@ -4673,6 +4901,7 @@ typedef struct VStylePropertyMeta {
     VAnchorTo (*anchor_to)(const VStyle*);
     VAttachPointX (*attach_point_x)(const VStyle*);
     VAttachPointY (*attach_point_y)(const VStyle*);
+    VPosition (*position)(const VStyle*);
     VTextWrap (*text_wrap)(const VStyle*);
   } get_fn;
 
@@ -4903,6 +5132,36 @@ static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
       .set_fn.fval = &vs_set_aspect_ratio,
       .get_fn.fval = &vs_get_aspect_ratio,
     },
+    [VS_POSITION] = {
+      .tag = VSTAG_ENUM_POSITION,
+      .default_value.position = V_POSITION_STATIC,
+      .set_fn.position = &vs_set_position,
+      .get_fn.position = &vs_get_position,
+    },
+    [VS_TOP] = {
+      .tag = VSTAG_FLOAT,
+      .default_value.fval = 0,
+      .set_fn.fval = &vs_set_top,
+      .get_fn.fval = &vs_get_top,
+    },
+    [VS_RIGHT] = {
+      .tag = VSTAG_FLOAT,
+      .default_value.fval = 0,
+      .set_fn.fval = &vs_set_right,
+      .get_fn.fval = &vs_get_right,
+    },
+    [VS_BOTTOM] = {
+      .tag = VSTAG_FLOAT,
+      .default_value.fval = 0,
+      .set_fn.fval = &vs_set_bottom,
+      .get_fn.fval = &vs_get_bottom,
+    },
+    [VS_LEFT] = {
+      .tag = VSTAG_FLOAT,
+      .default_value.fval = 0,
+      .set_fn.fval = &vs_set_left,
+      .get_fn.fval = &vs_get_left,
+    },
     // clang-format on
 };
 
@@ -5121,6 +5380,15 @@ VUID_PROPERTY_FUNCTIONS_IMPL(VS_ASPECT_RATIO,
                              float,
                              vs_float_eq,
                              fval)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_POSITION,
+                             position,
+                             VPosition,
+                             VUID_EQ,
+                             position)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_TOP, top, float, vs_float_eq, fval)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_RIGHT, right, float, vs_float_eq, fval)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_BOTTOM, bottom, float, vs_float_eq, fval)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_LEFT, left, float, vs_float_eq, fval)
 
 #ifdef _MSC_VER
 #pragma warning(pop)
