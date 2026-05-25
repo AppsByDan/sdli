@@ -4,6 +4,8 @@
 #include <sdli/util.h>
 #include <sdli/widget/widget.h>
 
+#define NID_SCREEN_NAVIGATOR "screen-nav"
+
 //
 // external declarations
 //
@@ -25,18 +27,16 @@ static VNode* CreateScreen(const char* id);
 VNode* ScreenNavigator(void)
 {
   VNode* screen_navigator = Box({
-      .id = "screen_navigator",
+      .id = NID_SCREEN_NAVIGATOR,
       .sclass = CLS_FILL,
   });
-
-  v_node_append_child(v_root(), screen_navigator);
 
   return Navigator_Init(screen_navigator, &CreateScreen);
 }
 
 void ScreenNavigator_Goto(const char* id)
 {
-  VNode* screen_navigator = v_get_node_by_id("screen_navigator");
+  VNode* screen_navigator = v_get_node_by_id(NID_SCREEN_NAVIGATOR);
   assert(screen_navigator);
 
   Navigator_Goto(screen_navigator, id);
