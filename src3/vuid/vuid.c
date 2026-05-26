@@ -3141,10 +3141,9 @@ void v_node_mark_dirty(VNode* node) {
   VNode* walker = node;
 
   while (walker) {
-    if (v_node__has_flag(walker, V_NODEFLAG_DIRTY)) {
-      return;
+    if (!v_node__has_flag(walker, V_NODEFLAG_DIRTY)) {
+      v_node__set_flag(walker, V_NODEFLAG_DIRTY);
     }
-    v_node__set_flag(walker, V_NODEFLAG_DIRTY);
     walker = v_node_parent(walker);
   }
 }
@@ -3401,6 +3400,14 @@ bool v_node_replace_child(VNode* node, VNode* new_child, VNode* old_child) {
   v_node_mark_dirty(node);
 
   return true;
+}
+
+bool v_node_remove(VNode* node) {
+  if (!node || !node->parent) {
+    return false;
+  }
+
+  return v_node_remove_child(node->parent->ref, node);
 }
 
 void v_node_remove_children(VNode* node) {
@@ -5269,6 +5276,15 @@ VUID_PRIVATE void v_style__flatten(VStyle* a, VStyle* b) {
         break;
       case VSTAG_ENUM_ATTACH_POINT_Y:
         meta->set_fn.attach_point_y(a, meta->get_fn.attach_point_y(b));
+        break;
+      case VSTAG_ENUM_WRAP:
+        meta->set_fn.wrap(a, meta->get_fn.wrap(b));
+        break;
+      case VSTAG_ENUM_TEXT_WRAP:
+        meta->set_fn.text_wrap(a, meta->get_fn.text_wrap(b));
+        break;
+      case VSTAG_ENUM_POSITION:
+        meta->set_fn.position(a, meta->get_fn.position(b));
         break;
       case VSTAG_FLOAT:
         meta->set_fn.fval(a, meta->get_fn.fval(b));

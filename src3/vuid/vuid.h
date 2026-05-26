@@ -561,11 +561,12 @@ VNode*      v_node_prev_sibling(const VNode* node);
 
 int         v_node_child_count(const VNode* node);
 VNode*      v_node_child_at(const VNode* node, int index);
-bool        v_node_insert_before(VNode* node, VNode* child, VNode* reference_node);
 bool        v_node_append_child(VNode* node, VNode* child);
 bool        v_node_prepend_child(VNode* node, VNode* child);
 bool        v_node_remove_child(VNode* node, VNode* child);
+bool        v_node_insert_before(VNode* node, VNode* child, VNode* reference_node);
 bool        v_node_replace_child(VNode* node, VNode* new_child, VNode* old_child);
+bool        v_node_remove(VNode* node);
 void        v_node_remove_children(VNode* node);
 
 void        v_node_style_assign(VNode* node, VStyle* style);
