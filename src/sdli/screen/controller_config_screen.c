@@ -149,9 +149,10 @@ static void UpdateConfigGroup(size_t selected_index)
 {
   CCScreenState* state = GetScreenState();
   CCBindingGroup* group = &state->groups.data[state->group_index];
-  VNode* group_box = Box(
-      {.sclass = CLS_CONFIG_GROUP,
-       Children(Text({.content.text = group->name, .sclass = CLS_PLAN_H1}))});
+  VNode* group_box = Box({
+      .sclass = CLS_CONFIG_GROUP,
+      Children(Text({.content.text = group->name, .sclass = CLS_PLAN_H1})),
+  });
 
   for (size_t i = 0; i < group->bindings.size; i++) {
     CCBinding* config = &group->bindings.items[i];
@@ -236,12 +237,6 @@ static void BackButtonOnClick(VNode* node, VEvent* event)
   ScreenNavigator_Goto(SCREENID_HOME);
 }
 
-static void DismissButtonOnClick(VNode* node, VEvent* event)
-{
-  UNUSED(node, event);
-  Overlay_Dismiss();
-}
-
 static void FinishButtonOnClick(VNode* node, VEvent* event)
 {
   // TODO: save config
@@ -293,7 +288,7 @@ static void NextButtonOnClick(VNode* node, VEvent* event)
     state->binding_index++;
     UpdateSelectedConfig(state->group_index, old_index, state->binding_index);
   } else {
-    if (state->group_index < state->groups.size - 1) {
+    if ((isize)state->group_index < state->groups.size - 1) {
       state->group_index++;
       state->binding_index = 0;
       UpdateConfigGroup(state->binding_index);
@@ -306,7 +301,7 @@ static void NextGroupButtonOnClick(VNode* node, VEvent* event)
   UNUSED(node, event);
   CCScreenState* state = GetScreenState();
 
-  if (state->group_index < state->groups.size - 1) {
+  if ((isize)state->group_index < state->groups.size - 1) {
     state->group_index++;
     state->binding_index = 0;
     UpdateConfigGroup(state->binding_index);
@@ -328,7 +323,9 @@ static void ControllerConfigScreenState_Drop(void* state)
 
 static void CCBindingGroup_drop(CCBindingGroup* group)
 {
-  cstr_drop(&group->name);
+  for (size_t i = 0; i < group->bindings.size; i++) {
+    cstr_drop(&group->bindings.items[i].value);
+  }
 }
 
 static void StandardGamepadConfig(CCScreenState* state)
