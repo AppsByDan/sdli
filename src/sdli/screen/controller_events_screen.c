@@ -85,6 +85,7 @@ static const HatDisplayInfo HAT_DISPLAY_INFO[] = {
     {ICON_LEFT, POV_HAT_MASK_LEFT},
     {ICON_RIGHT, POV_HAT_MASK_RIGHT},
 };
+static const size_t HAT_DISPLAY_INFO_SIZE = u_arraylen(HAT_DISPLAY_INFO);
 
 // clang-format off
 static const StandardGamepadKey BUTTON_GRID[STANDARD_GAMEPAD_BUTTON_COUNT + 2] = {
@@ -118,7 +119,7 @@ static const StandardGamepadKey BUTTON_GRID[STANDARD_GAMEPAD_BUTTON_COUNT + 2] =
     SGK_INVALID,
 };
 static const int BUTTON_GRID_ROW = 4;
-static const int BUTTON_GRID_SIZE = (int)c_arraylen(BUTTON_GRID);
+static const int BUTTON_GRID_SIZE = (int)u_arraylen(BUTTON_GRID);
 // clang-format on
 
 //
@@ -484,7 +485,7 @@ static VNode* DirectionPadBlock(int hat_id, ControllerPovHatMask direction)
 {
   const char* text = "";
 
-  for (size_t i = 0; i < c_arraylen(HAT_DISPLAY_INFO); i++) {
+  for (size_t i = 0; i < HAT_DISPLAY_INFO_SIZE; i++) {
     if (HAT_DISPLAY_INFO[i].mask == direction) {
       text = HAT_DISPLAY_INFO[i].icon;
       break;
@@ -639,7 +640,7 @@ static void UpdateJoystickAxisValue(int axis_id, float value)
 
 static void UpdateJoystickHatValue(int hat_id, uint8_t hat_value)
 {
-  for (int i = 0; i < (int)c_arraylen(HAT_DISPLAY_INFO); i++) {
+  for (size_t i = 0; i < HAT_DISPLAY_INFO_SIZE; i++) {
     const int mask = (int)HAT_DISPLAY_INFO[i].mask;
     const bool pressed = (hat_value & mask) != 0;
 

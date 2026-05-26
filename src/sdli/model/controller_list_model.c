@@ -126,7 +126,7 @@ typedef struct Controller {
   SDL_Joystick* joystick;
   SDL_Gamepad* gamepad;
 
-  bool properties[c_arraylen(JOYSTICK_PROPERTY_NAMES)];
+  bool properties[u_arraylen(JOYSTICK_PROPERTY_NAMES)];
   char* gamepad_mapping_csv;
 
   gamepad_mappings mappings;
@@ -248,7 +248,7 @@ ControllerId* ControllerListModel_SortControllers(int* out_count)
 void ControllerListModel_AddChangeEventListener(
     ControllerChangeEventListener listener)
 {
-  const size_t size = c_arraylen(g_controller_list_model.change_listeners);
+  const size_t size = u_arraylen(g_controller_list_model.change_listeners);
 
   for (size_t i = 0; i < size; i++) {
     if (g_controller_list_model.change_listeners[i] == listener) {
@@ -270,7 +270,7 @@ void ControllerListModel_AddChangeEventListener(
 void ControllerListModel_RemoveChangeEventListener(
     ControllerChangeEventListener listener)
 {
-  const size_t size = c_arraylen(g_controller_list_model.change_listeners);
+  const size_t size = u_arraylen(g_controller_list_model.change_listeners);
 
   for (size_t i = 0; i < size; i++) {
     if (g_controller_list_model.change_listeners[i] == listener) {
@@ -541,19 +541,19 @@ bool Controller_GetPropertyValue(ControllerId id, int property_index)
   Controller* controller = GetController(id);
 
   return controller && property_index >= 0 &&
-         property_index < (int)c_arraylen(JOYSTICK_PROPERTY_NAMES) &&
+         property_index < (int)u_arraylen(JOYSTICK_PROPERTY_NAMES) &&
          controller->properties[property_index];
 }
 
 int Controller_GetPropertyCount(void)
 {
-  return (int)c_arraylen(JOYSTICK_PROPERTY_NAMES);
+  return (int)u_arraylen(JOYSTICK_PROPERTY_NAMES);
 }
 
 const char* Controller_GetPropertyName(int property_index)
 {
   return (property_index >= 0 &&
-          property_index < (int)c_arraylen(JOYSTICK_PROPERTY_NAMES))
+          property_index < (int)u_arraylen(JOYSTICK_PROPERTY_NAMES))
              ? JOYSTICK_PROPERTY_NAMES[property_index]
              : "";
 }
@@ -974,7 +974,7 @@ static bool ReadString(csview* src, csview* out, int ch)
 
 static bool FindMappingNameIndex(csview name, int* out_index)
 {
-  for (size_t i = 0; i < c_arraylen(GAMEPAD_MAPPING_NAMES); i++) {
+  for (size_t i = 0; i < u_arraylen(GAMEPAD_MAPPING_NAMES); i++) {
     if (csview_equals_sv(name, csview_with_n(GAMEPAD_MAPPING_NAMES[i].str,
                                              GAMEPAD_MAPPING_NAMES[i].size))) {
       *out_index = (int)i;
@@ -1131,7 +1131,7 @@ static void UpdateProperties(Controller* controller)
   SDL_PropertiesID joystick_properties =
       SDL_GetJoystickProperties(controller->joystick);
 
-  for (size_t i = 0; i < c_arraylen(controller->properties); i++) {
+  for (size_t i = 0; i < u_arraylen(controller->properties); i++) {
     controller->properties[i] = SDL_GetBooleanProperty(
         joystick_properties, JOYSTICK_PROPERTY_NAMES[i], false);
   }
@@ -1143,7 +1143,7 @@ static void UpdateProperties(Controller* controller)
 static void DispatchControllerChangeEvent(ControllerId id,
                                           ControllerChange change)
 {
-  const size_t size = c_arraylen(g_controller_list_model.change_listeners);
+  const size_t size = u_arraylen(g_controller_list_model.change_listeners);
 
   if (size == 0) {
     return;

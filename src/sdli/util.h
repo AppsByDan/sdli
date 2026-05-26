@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <vuid.h>
@@ -36,7 +37,10 @@
 #define Image v_img
 #define Children v_children
 
+/* zsview init for constant initialization. */
 #define zv_init(STR) {STR, (isize)(sizeof("" STR) - 1)}
+/* Get the length of an undecayed array.*/
+#define u_arraylen(A) (sizeof(A) / sizeof((A)[0]))
 
 //
 // public functions

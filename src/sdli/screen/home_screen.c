@@ -34,6 +34,7 @@ static const HomeButtonData HOME_BUTTONS[] = {
     {SID_CONTROLLERS, ICON_GAMEPAD, PAGEID_CONTROLLER_LIST},
     {SID_SYSTEM, ICON_COG_ALT, PAGEID_SYSTEM},
 };
+static const size_t HOME_BUTTON_SIZE = u_arraylen(HOME_BUTTONS);
 
 //
 // private function declarations
@@ -72,7 +73,7 @@ VNode* HomeScreen(void)
 
   PageNavigator_Init(right_column);
 
-  for (size_t i = 0; i < c_arraylen(HOME_BUTTONS); ++i) {
+  for (size_t i = 0; i < HOME_BUTTON_SIZE; ++i) {
     v_node_append_child(left_column, HomeButton(&HOME_BUTTONS[i]));
   }
 
@@ -121,7 +122,7 @@ static void StyleSheet(void)
 
   vss_extend(S, CLS_HOME_BUTTON_ICON, CLS_ICON)
   {
-    for (size_t i = 0; i < c_arraylen(HOME_BUTTONS); ++i) {
+    for (size_t i = 0; i < HOME_BUTTON_SIZE; ++i) {
       float w = v_style_measure_text_w(S, HOME_BUTTONS[i].icon_text);
 
       if (w > max_width) {
