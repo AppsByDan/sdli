@@ -24,6 +24,7 @@ int main(int argc, char** argv)
   SystemModel_Init();
   ControllerListModel_Init();
   ControllerInputModel_Init();
+  State_Init();
 
   LoadAssets();
   LoadStyleSheet();
@@ -38,6 +39,7 @@ int main(int argc, char** argv)
     App_Present();
   }
 
+  State_Drop();
   ControllerInputModel_Drop();
   ControllerListModel_Drop();
   SystemModel_Drop();

@@ -112,11 +112,17 @@ void Overlay_Dismiss(void);
  * Locale is the current locale for UI strings, en-US is the default.
  */
 
+void State_Init(void);
+void State_Drop(void);
+
 ControllerId State_GetSelectedController(void);
 void State_SelectController(ControllerId id);
 void State_ClearController(void);
 
 Locale State_GetLocale(void);
 void State_SetLocale(Locale locale);
+
+void State_SetData(const char* key, void* data, void (*free_data)(void*));
+void* State_GetData(const char* key);
 
 #endif  // SDLI_WIDGET_H
