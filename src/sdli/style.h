@@ -1,13 +1,15 @@
 #ifndef SDLI_STYLE_H
 #define SDLI_STYLE_H
 
+#include "util.h"
+
 //
 // macros & constants
 //
 
-#define FONT_NORMAL (0)
-#define FONT_BOLD (1)
-#define FONT_ICON (2)
+extern uint16_t FONT_NORMAL;
+extern uint16_t FONT_BOLD;
+extern uint16_t FONT_ICON;
 
 #define THEME_TEXT_FONT_SIZE (16)
 #define THEME_TEXT_FONT_SIZE_MD (18)

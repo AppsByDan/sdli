@@ -42,7 +42,7 @@
 //
 
 static void OnNavigatorEvent(NavigatorEvent* event);
-static void OnBackButtonClick(VNode* node, VEvent* event);
+static void OnBackButtonClick(VNode* node, VNodeEvent* event);
 
 //
 // public function implementation
@@ -209,7 +209,7 @@ static void OnNavigatorEvent(NavigatorEvent* event)
   }
 }
 
-static void OnBackButtonClick(VNode* node, VEvent* event)
+static void OnBackButtonClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(node, event);
   // TODO: this should be a back navigate, not a goto

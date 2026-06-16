@@ -136,8 +136,8 @@ static VNode* JoystickAxis(int axis_id);
 static void OnJoystickControllerInputEvent(const ControllerInputEvent* event);
 static void OnGamepadControllerInputEvent(const ControllerInputEvent* event);
 static void OnNavigatorEvent(NavigatorEvent* event);
-static void BackButtonOnClick(VNode* node, VEvent* event);
-static void ToggleApiButtonOnClick(VNode* node, VEvent* event);
+static void BackButtonOnClick(VNode* node, VNodeEvent* event);
+static void ToggleApiButtonOnClick(VNode* node, VNodeEvent* event);
 static void SetControllerApi(VNode* toggle, ControllerApi new_api);
 static void UpdateGamepadAxisValue(int sgk_axis, float value);
 static void UpdateGamepadButtonValue(int sgk_button, bool pressed);
@@ -234,14 +234,14 @@ static void OnNavigatorEvent(NavigatorEvent* event)
   }
 }
 
-static void BackButtonOnClick(VNode* node, VEvent* event)
+static void BackButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(node, event);
   // TODO: this should be a back navigation, not a hard goto
   ScreenNavigator_Goto(SCREENID_HOME);
 }
 
-static void ToggleApiButtonOnClick(VNode* node, VEvent* event)
+static void ToggleApiButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(event);
   const ControllerApi api = (ControllerApi)(intptr_t)v_node_data(node);

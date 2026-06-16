@@ -81,11 +81,11 @@ VNode* KeyValueListItem_GetValue(VNode* kv_list_item);
  * click actions.
  */
 
-VNode* Button(const char* label, void* data, VEventListener on_click);
+VNode* Button(const char* label, void* data, VNodeEventListener on_click);
 VNode* ButtonWithId(const char* id,
                     const char* label,
                     void* data,
-                    VEventListener on_click);
+                    VNodeEventListener on_click);
 void Button_SetLabel(VNode* node, const char* text);
 
 /*

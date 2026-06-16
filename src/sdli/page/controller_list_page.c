@@ -16,15 +16,17 @@
 static VNode* ControllerListItem(ControllerId id);
 static void OnNavigatorEvent(NavigatorEvent* event);
 static void OnControllerChangeEvent(const ControllerChangeEvent* event);
-static void InfoButtonOnClick(VNode* node, VEvent* event);
-static void EventsButtonOnClick(VNode* node, VEvent* event);
-static void ConfigureButtonOnClick(VNode* node, VEvent* event);
-static void RemoveMappingButtonOnClick(VNode* node, VEvent* event);
-static void CopyMappingButtonOnClick(VNode* node, VEvent* event);
-static void RumbleButtonOnClick(VNode* node, VEvent* event);
-static void ReloadMappingsButtonOnClick(VNode* node, VEvent* event);
-static void LoadMappingsFromClipboardButtonOnClick(VNode* node, VEvent* event);
-static void ExportMappingsToClipboardButtonOnClick(VNode* node, VEvent* event);
+static void InfoButtonOnClick(VNode* node, VNodeEvent* event);
+static void EventsButtonOnClick(VNode* node, VNodeEvent* event);
+static void ConfigureButtonOnClick(VNode* node, VNodeEvent* event);
+static void RemoveMappingButtonOnClick(VNode* node, VNodeEvent* event);
+static void CopyMappingButtonOnClick(VNode* node, VNodeEvent* event);
+static void RumbleButtonOnClick(VNode* node, VNodeEvent* event);
+static void ReloadMappingsButtonOnClick(VNode* node, VNodeEvent* event);
+static void LoadMappingsFromClipboardButtonOnClick(VNode* node,
+                                                   VNodeEvent* event);
+static void ExportMappingsToClipboardButtonOnClick(VNode* node,
+                                                   VNodeEvent* event);
 static ControllerId GetControllerId(VNode* node);
 
 //
@@ -162,59 +164,61 @@ static void OnControllerChangeEvent(const ControllerChangeEvent* event)
   }
 }
 
-static void InfoButtonOnClick(VNode* node, VEvent* event)
+static void InfoButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(event);
   State_SelectController(GetControllerId(node));
   PageNavigator_Goto(PAGEID_CONTROLLER_INFO);
 }
 
-static void EventsButtonOnClick(VNode* node, VEvent* event)
+static void EventsButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(event);
   State_SelectController(GetControllerId(node));
   ScreenNavigator_Goto(SCREENID_CONTROLLER_EVENTS);
 }
 
-static void ConfigureButtonOnClick(VNode* node, VEvent* event)
+static void ConfigureButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(event);
   State_SelectController(GetControllerId(node));
   ScreenNavigator_Goto(SCREENID_CONTROLLER_CONFIG);
 }
 
-static void RemoveMappingButtonOnClick(VNode* node, VEvent* event)
+static void RemoveMappingButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(event);
   Controller_RemoveMapping(GetControllerId(node));
 }
 
-static void CopyMappingButtonOnClick(VNode* node, VEvent* event)
+static void CopyMappingButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(event);
   SystemModel_CopyToClipboard(
       Controller_GetMappingString(GetControllerId(node)));
 }
 
-static void RumbleButtonOnClick(VNode* node, VEvent* event)
+static void RumbleButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(event);
   Controller_Rumble(GetControllerId(node));
 }
 
-static void ReloadMappingsButtonOnClick(VNode* node, VEvent* event)
+static void ReloadMappingsButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(node, event);
   ControllerListModel_ReloadMappings();
 }
 
-static void LoadMappingsFromClipboardButtonOnClick(VNode* node, VEvent* event)
+static void LoadMappingsFromClipboardButtonOnClick(VNode* node,
+                                                   VNodeEvent* event)
 {
   UNUSED(node, event);
   ControllerListModel_LoadMappingsFromClipboard();
 }
 
-static void ExportMappingsToClipboardButtonOnClick(VNode* node, VEvent* event)
+static void ExportMappingsToClipboardButtonOnClick(VNode* node,
+                                                   VNodeEvent* event)
 {
   UNUSED(node, event);
   ControllerListModel_ExportMappingsToClipboard();

@@ -10,7 +10,6 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(SDLI_EXE sdli)
 set(SDLI_LIB sdli_lib)
-set(VUID_LIB vuid_lib)
 
 if (APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum MacOS deployment version")
@@ -77,16 +76,6 @@ target_compile_options(sdli_base INTERFACE
 )
 
 #
-# vuid static library
-#
-
-add_library(${VUID_LIB}
-  "src3/vuid/vuid.c"
-)
-
-target_include_directories(${VUID_LIB} PUBLIC "src3/vuid")
-
-#
 # sdli static library
 #
 
@@ -107,21 +96,21 @@ add_library(${SDLI_LIB}
   "src/sdli/screen/controller_events_screen.c"
   "src/sdli/screen/home_screen.c"
   "src/sdli/screen/screen.c"
-  "src/sdli/vuid/texture_cache.c"
-  "src/sdli/vuid/vuid_sdl3.c"
   "src/sdli/widget/button.c"
   "src/sdli/widget/list_item.c"
   "src/sdli/widget/navigator.c"
   "src/sdli/widget/overlay.c"
   "src/sdli/widget/state.c"
+  "src3/vuid/vuid.c"
+  "src3/vuid/vuid_sdl3.c"
 )
 
 target_link_libraries(${SDLI_LIB} PUBLIC
   stc
-  SDL3_ttf::SDL3_ttf
   SDL3::SDL3
   sdli_base
-  ${VUID_LIB}
+  harfbuzz_world
+  freetype
   $<$<NOT:$<C_COMPILER_ID:MSVC>>:m>
 )
 
@@ -130,13 +119,16 @@ if (NOT WIN32)
 endif()
 
 target_include_directories(${SDLI_LIB} PUBLIC
-  src
+  "src"
+  "src3/vuid"
 )
 
 target_compile_definitions(${SDLI_LIB} PUBLIC
   SDLI_VERSION="${PROJECT_VERSION}"
   $<$<PLATFORM_ID:Windows>:UNICODE>
   $<$<PLATFORM_ID:Windows>:_UNICODE>
+  VUID_FONT_ENGINE_FREETYPE
+  VUID_FONT_SHAPER_HARFBUZZ
   # for incbin to work with assets
   "SDLI_ASSETS_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/assets/\""
 )
@@ -195,13 +187,6 @@ if(WIN32 AND NOT SDLI_SDL3_STATIC)
       TARGET ${SDLI_EXE} POST_BUILD
       COMMAND "${CMAKE_COMMAND}" -E copy
               $<TARGET_FILE:SDL3::SDL3-shared>
-              $<TARGET_FILE_DIR:${SDLI_EXE}>
-      VERBATIM
-  )
-  add_custom_command(
-      TARGET ${SDLI_EXE} POST_BUILD
-      COMMAND "${CMAKE_COMMAND}" -E copy
-              $<TARGET_FILE:SDL3_ttf::SDL3_ttf-shared>
               $<TARGET_FILE_DIR:${SDLI_EXE}>
       VERBATIM
   )

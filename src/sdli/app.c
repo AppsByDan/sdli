@@ -3,12 +3,11 @@
 #include <stdlib.h>
 
 #include <sdli/util.h>
-#include <sdli/vuid/texture_cache.h>
-#include <sdli/vuid/vuid_sdl3.h>
 
 #include <SDL3/SDL.h>
-#include <SDL3_ttf/SDL_ttf.h>
 #include <stc/common.h>
+
+#include <vuid_sdl3.h>
 
 //
 // private types
@@ -43,7 +42,6 @@ static void EventGroup_drop(EventGroup* group);
 typedef struct App {
   SDL_Window* window;
   SDL_Renderer* renderer;
-  TTF_TextEngine* text_engine;
   event_map event_listeners;
   bool is_running;
 } App;
@@ -54,7 +52,6 @@ typedef struct App {
 
 static SDL_Window* SCreateWindow(const char* title, int width, int height);
 static SDL_Renderer* SCreateRenderer(SDL_Window* window);
-static TTF_TextEngine* SCreateTextEngine(SDL_Renderer* renderer);
 static void DispatchEvent(int event_type, void* event_data);
 
 //
@@ -71,7 +68,6 @@ bool App_Init(void)
 {
   assert(g_app.window == NULL);
   assert(g_app.renderer == NULL);
-  assert(g_app.text_engine == NULL);
 
   SLog("%s", FN_NAME);
 
@@ -106,24 +102,17 @@ bool App_Init(void)
     goto error;
   }
 
-  g_app.text_engine = SCreateTextEngine(g_app.renderer);
-
-  if (!g_app.text_engine) {
-    goto error;
-  }
-
   const VConfig config = {
-      .gfx_context.user_data =
-          {
-              [V_SDL3_RENDERER_ID] = g_app.renderer,
-              [V_SDL3_TEXT_ENGINE_ID] = g_app.text_engine,
-          },
+      .image_loader = &v_sdl3_image_loader,
   };
-
-  TextureCache_Init(g_app.renderer);
 
   if (!v_init(&config)) {
     SLog("ERROR: v_init() failed");
+    goto error;
+  }
+
+  if (!v_sdl3_init(g_app.renderer)) {
+    SLog("ERROR: v_sdl3_init() failed");
     goto error;
   }
 
@@ -143,13 +132,8 @@ void App_Shutdown(void)
 {
   SLog("%s", FN_NAME);
 
+  v_sdl3_shutdown();
   v_quit();
-
-  TextureCache_Drop();
-
-  if (g_app.text_engine) {
-    TTF_DestroyRendererTextEngine(g_app.text_engine);
-  }
 
   if (g_app.renderer) {
     SDL_DestroyRenderer(g_app.renderer);
@@ -159,7 +143,6 @@ void App_Shutdown(void)
     SDL_DestroyWindow(g_app.window);
   }
 
-  TTF_Quit();
   SDL_Quit();
 
   g_app = (App){0};
@@ -177,7 +160,7 @@ bool App_ProcessEvents(void)
         g_app.is_running = false;
         break;
       default:
-        v_sdl3_handle_event(&event, g_app.renderer);
+        v_sdl3_process_event(&event);
         if (event.type < UINT32_MAX) {
           DispatchEvent((int)event.type, &event);
         }
@@ -196,12 +179,16 @@ void App_Present(void)
   int width = 0;
   int height = 0;
 
+  SDL_GetRenderOutputSize(renderer, &width, &height);
+
+  v_process_events();
+  v_update(width, height);
+  v_render();
+
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-
-  SDL_GetWindowSize(g_app.window, &width, &height);
-  v_layout(width, height);
-
-  v_draw();
+  SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+  SDL_RenderClear(renderer);
+  v_sdl3_render();
 
   SDL_RenderPresent(renderer);
 }
@@ -316,22 +303,6 @@ static SDL_Renderer* SCreateRenderer(SDL_Window* window)
   }
 
   return renderer;
-}
-
-static TTF_TextEngine* SCreateTextEngine(SDL_Renderer* renderer)
-{
-  if (!TTF_Init()) {
-    SLogCallError("TTF_Init");
-    return NULL;
-  }
-
-  TTF_TextEngine* text_engine = TTF_CreateRendererTextEngine(renderer);
-
-  if (!text_engine) {
-    SLogCallError("TTF_CreateRendererTextEngine");
-  }
-
-  return text_engine;
 }
 
 static void EventGroup_drop(EventGroup* group)

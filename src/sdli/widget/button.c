@@ -7,13 +7,13 @@
 // private function declarations
 //
 
-static void OnMouseMove(VNode* node, VEvent* event);
+static void OnMouseMove(VNode* node, VNodeEvent* event);
 
 //
 // public function implementation
 //
 
-VNode* Button(const char* label, void* data, VEventListener on_click)
+VNode* Button(const char* label, void* data, VNodeEventListener on_click)
 {
   return ButtonWithId(NULL, label, data, on_click);
 }
@@ -21,7 +21,7 @@ VNode* Button(const char* label, void* data, VEventListener on_click)
 VNode* ButtonWithId(const char* id,
                     const char* label,
                     void* data,
-                    VEventListener on_click)
+                    VNodeEventListener on_click)
 {
   // clang-format off
     return Box({
@@ -47,13 +47,13 @@ void Button_SetLabel(VNode* node, const char* text)
 // private function implementation
 //
 
-static void OnMouseMove(VNode* node, VEvent* event)
+static void OnMouseMove(VNode* node, VNodeEvent* event)
 {
   (void)event;
-  if (event->type == V_EVENT_MOUSE_ENTER) {
+  if (event->type == V_NODE_EVENT_MOUSE_ENTER) {
     v_node_style_assign_class(node, CLS_BUTTON_HOVER);
     v_node_style_assign_class(v_node_child_at(node, 0), CLS_BUTTON_TEXT_HOVER);
-  } else if (event->type == V_EVENT_MOUSE_LEAVE) {
+  } else if (event->type == V_NODE_EVENT_MOUSE_LEAVE) {
     v_node_style_assign_class(node, CLS_BUTTON);
     v_node_style_assign_class(v_node_child_at(node, 0), CLS_BUTTON_TEXT);
   }

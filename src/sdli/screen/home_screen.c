@@ -42,8 +42,8 @@ static const size_t HOME_BUTTON_SIZE = u_arraylen(HOME_BUTTONS);
 
 static void StyleSheet(void);
 static VNode* HomeButton(const HomeButtonData* data);
-static void HomeButton_OnClick(VNode* node, VEvent* event);
-static void HomeButton_OnMouseOver(VNode* node, VEvent* event);
+static void HomeButton_OnClick(VNode* node, VNodeEvent* event);
+static void HomeButton_OnMouseOver(VNode* node, VNodeEvent* event);
 static void OnNavigatorEvent(NavigatorEvent* event);
 
 //
@@ -176,7 +176,7 @@ static VNode* HomeButton(const HomeButtonData* data)
   // clang-format on
 }
 
-static void HomeButton_OnClick(VNode* node, VEvent* event)
+static void HomeButton_OnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(event);
   const char* page_id = v_node_data(node);
@@ -185,19 +185,19 @@ static void HomeButton_OnClick(VNode* node, VEvent* event)
   PageNavigator_Goto(page_id);
 }
 
-static void HomeButton_OnMouseOver(VNode* node, VEvent* event)
+static void HomeButton_OnMouseOver(VNode* node, VNodeEvent* event)
 {
   VNode* icon_box = v_node_child_at(node, 0);
   VNode* label = v_node_child_at(node, 1);
 
   switch (event->type) {
-    case V_EVENT_MOUSE_ENTER:
+    case V_NODE_EVENT_MOUSE_ENTER:
       v_node_style_assign_class(node, CLS_HOME_BUTTON_HOVER);
       v_node_style_assign_class(v_node_first_child(icon_box),
                                 CLS_HOME_BUTTON_ICON_HOVER);
       v_node_style_assign_class(label, CLS_HOME_BUTTON_TEXT_HOVER);
       break;
-    case V_EVENT_MOUSE_LEAVE:
+    case V_NODE_EVENT_MOUSE_LEAVE:
       v_node_style_assign_class(node, CLS_HOME_BUTTON);
       v_node_style_assign_class(v_node_first_child(icon_box),
                                 CLS_HOME_BUTTON_ICON);

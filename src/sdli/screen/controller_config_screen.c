@@ -74,12 +74,12 @@ static void UpdateSelectedConfig(size_t group_index,
                                  size_t new_config_index);
 static void OnNavigatorEvent(NavigatorEvent* event);
 static void OnControllerInputEvent(const ControllerInputEvent* event);
-static void BackButtonOnClick(VNode* node, VEvent* event);
-static void FinishButtonOnClick(VNode* node, VEvent* event);
-static void NextButtonOnClick(VNode* node, VEvent* event);
-static void NextGroupButtonOnClick(VNode* node, VEvent* event);
-static void PreviousButtonOnClick(VNode* node, VEvent* event);
-static void PreviousGroupButtonOnClick(VNode* node, VEvent* event);
+static void BackButtonOnClick(VNode* node, VNodeEvent* event);
+static void FinishButtonOnClick(VNode* node, VNodeEvent* event);
+static void NextButtonOnClick(VNode* node, VNodeEvent* event);
+static void NextGroupButtonOnClick(VNode* node, VNodeEvent* event);
+static void PreviousButtonOnClick(VNode* node, VNodeEvent* event);
+static void PreviousGroupButtonOnClick(VNode* node, VNodeEvent* event);
 static CCScreenState* GetScreenState(void);
 static void ControllerConfigScreenState_Drop(void* state);
 static void StandardGamepadConfig(CCScreenState* state);
@@ -230,20 +230,20 @@ void OnControllerInputEvent(const ControllerInputEvent* event)
   NextButtonOnClick(NULL, NULL);
 }
 
-static void BackButtonOnClick(VNode* node, VEvent* event)
+static void BackButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(node, event);
   // TODO: this should be a back navigation, not a hard goto
   ScreenNavigator_Goto(SCREENID_HOME);
 }
 
-static void FinishButtonOnClick(VNode* node, VEvent* event)
+static void FinishButtonOnClick(VNode* node, VNodeEvent* event)
 {
   // TODO: save config
   BackButtonOnClick(node, event);
 }
 
-static void PreviousButtonOnClick(VNode* node, VEvent* event)
+static void PreviousButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(node, event);
   CCScreenState* state = GetScreenState();
@@ -263,7 +263,7 @@ static void PreviousButtonOnClick(VNode* node, VEvent* event)
   }
 }
 
-static void PreviousGroupButtonOnClick(VNode* node, VEvent* event)
+static void PreviousGroupButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(node, event);
   CCScreenState* state = GetScreenState();
@@ -276,7 +276,7 @@ static void PreviousGroupButtonOnClick(VNode* node, VEvent* event)
   }
 }
 
-static void NextButtonOnClick(VNode* node, VEvent* event)
+static void NextButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(node, event);
   CCScreenState* state = GetScreenState();
@@ -296,7 +296,7 @@ static void NextButtonOnClick(VNode* node, VEvent* event)
   }
 }
 
-static void NextGroupButtonOnClick(VNode* node, VEvent* event)
+static void NextGroupButtonOnClick(VNode* node, VNodeEvent* event)
 {
   UNUSED(node, event);
   CCScreenState* state = GetScreenState();
