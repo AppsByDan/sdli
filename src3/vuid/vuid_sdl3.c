@@ -103,6 +103,19 @@ void v_sdl3_process_event(SDL_Event* event) {
       }
       break;
     }
+    case SDL_EVENT_WINDOW_MOUSE_LEAVE: {
+      // send a mouse move that is outside of vuid's root
+      // - SDL_GetMouseState() returns that last known position which is inside
+      //   the root. Send a (-1, -1), as we 100% know it is outside the root.
+      // - No need to SDL_EVENT_WINDOW_MOUSE_ENTER, as mouse move event will
+      //   handle that.
+      ie.type = V_INPUT_EVENT_MOUSE_MOVE;
+      ie.u.mouse_move.x = -1;
+      ie.u.mouse_move.y = -1;
+      ie.u.mouse_move.relative_x = 0;
+      ie.u.mouse_move.relative_y = 0;
+      break;
+    }
     default:
       return;
   }

@@ -574,6 +574,68 @@ VUID_PKG bool v_utf8_get_codepoint(const uint8_t* utf8,
 
 #endif  // VUID_STD_HMAP_H
 
+#ifndef VUID_STD_BUFFER_H
+#define VUID_STD_BUFFER_H
+
+
+typedef struct VBuffer {
+  const void* data;
+  size_t size;
+  VAllocator* allocator;
+  void* source;
+} VBuffer;
+
+/* initialize a buffer with an unowned data pointer */
+static inline VBuffer v_buffer_init_static(const void* data, size_t size) {
+  return (VBuffer){
+      .data = data,
+      .size = size,
+  };
+}
+
+/* initialize a buffer with a copy of the source data */
+static inline bool v_buffer_from(VBuffer* self,
+                                 const void* source,
+                                 size_t size,
+                                 VAllocator* allocator) {
+  if (size == 0 || source == NULL) {
+    *self = (VBuffer){0};
+    return true;
+  }
+
+  void* data = v_alloc_raw(allocator, size);
+
+  if (!data) {
+    return false;
+  }
+
+  memcpy(data, source, size);
+
+  *self = (VBuffer){
+      .data = data,
+      .size = size,
+      .allocator = allocator,
+      .source = data,
+  };
+
+  return true;
+}
+
+/* check if a buffer is empty */
+static inline bool v_buffer_is_empty(const VBuffer* self) {
+  return !self || !self->data || self->size == 0;
+}
+
+/* free memory resources owned by this buffer. */
+static inline void v_buffer_drop(VBuffer* self) {
+  if (self->allocator && self->source) {
+    v_free(self->allocator, self->source, self->size);
+  }
+  *self = (VBuffer){0};
+}
+
+#endif  // VUID_STD_BUFFER_H
+
 #ifndef VUID_STD_ARR_H
 #define VUID_STD_ARR_H
 
@@ -898,6 +960,7 @@ typedef struct VImage VImage;
 struct VImage {
   VStringInternal src;
   VImageBuffer buffer;
+  VBuffer file_buffer;
   uint32_t texture_id;
   uint32_t src_hash;
   uint32_t width;
@@ -936,8 +999,7 @@ VUID_PKG void v_image_store_release(VImageStore* self, VImage* image);
 VUID_PKG bool v_image_store_persist(VImageStore* self, const char* src);
 VUID_PKG bool v_image_store_persist_mem(VImageStore* self,
                                         const char* src,
-                                        const void* file_data,
-                                        size_t file_data_size);
+                                        VBuffer* buffer);
 VUID_PKG void v_image_store_remove(VImageStore* self, const char* src);
 
 /* exposed for testing */
@@ -952,37 +1014,50 @@ VUID_PKG uint32_t v_image_get_texture_id(const VImage* image);
 #ifndef VUID_TEXT_DEPS_H
 #define VUID_TEXT_DEPS_H
 
-/*
- * Compile time switched dependencies isolated to make the amalgamation easier
- * to manage.
- */
+/* Text Engine external dependencies. */
 
-#ifdef VUID_FONT_ENGINE_FREETYPE
+#if defined(VUID_TEXT_ENGINE_FT)
+
 #include <ft2build.h>
 #include FT_FREETYPE_H
-/*
- * FreeType load flags used consistently by the shaper and rasterizer.
- * FT_LOAD_TARGET_LIGHT hints only vertically, producing smoother glyphs on
- * modern LCD displays compared to FT_LOAD_TARGET_NORMAL.
- */
-#define VUID_FT_LOAD_FLAGS (FT_LOAD_DEFAULT | FT_LOAD_TARGET_LIGHT)
-#endif
-
-#ifdef VUID_FONT_ENGINE_STB
-#include <stb_truetype.h>
-#endif
-
-#ifdef VUID_FONT_SHAPER_HARFBUZZ
-#ifdef VUID_FONT_ENGINE_FREETYPE
+#if defined(VUID_TEXT_ENGINE_HB_SHAPER)
 #include <hb-ft.h>
+#endif
+
+/* FT load flags shared by the shaper and rasterizer. */
+#define VUID_FT_LOAD_FLAGS (FT_LOAD_DEFAULT | FT_LOAD_TARGET_LIGHT)
+
+#elif defined(VUID_TEXT_ENGINE_STB)
+
+#include <stb_truetype.h>
+
+#elif defined(VUID_TEXT_ENGINE_HB)
+
+#include <hb-ot.h>
+#include <hb-raster.h>
+// fallthrough
+
 #else
+
+// At compile time, define one of the following macros to select the text
+// engine for font file loading and font rasterization:
+//
+// VUID_TEXT_ENGINE_FT
+// VUID_TEXT_ENGINE_STB
+// VUID_TEXT_ENGINE_HB
+//
+#error "No text engine defined."
+
+#endif
+
+#if defined(VUID_TEXT_ENGINE_HB) || defined(VUID_TEXT_ENGINE_HB_SHAPER)
+
 #include <hb.h>
-#endif
-#endif
 
 #define VUID_HB_SUBPIXEL_BITS 6 /* 26.6 fixed-point, like FreeType */
 #define VUID_HB_FONT_SCALE (1 << VUID_HB_SUBPIXEL_BITS)
-#define VUID_HB_FONT_SCALE_F (float)(1 << VUID_HB_SUBPIXEL_BITS)
+
+#endif
 
 #endif  // VUID_TEXT_DEPS_H
 #ifndef VUID_TEXT_MOD_FWD_H
@@ -990,10 +1065,10 @@ VUID_PKG uint32_t v_image_get_texture_id(const VImage* image);
 
 
 
+
 typedef struct VTextLayout VTextLayout;
 typedef struct VFontData VFontData;
 typedef struct VGlyphAtlas VGlyphAtlas;
-typedef struct VShapedGlyph VShapedGlyph;
 
 /*
  * Packed key for the font face cache.
@@ -1006,16 +1081,70 @@ typedef struct VFontFaceKey {
 /* Cached per-size metrics for a single (font_id, pixel_size) combination. */
 typedef struct VFontFace {
   uint16_t font_id;
-  uint16_t pixel_size;
-  float ascent;      /* positive, pixels above baseline */
-  float descent;     /* negative, pixels below baseline */
-  float line_height; /* line advance in pixels */
+  uint16_t pixel_size; /* font size in pixels*/
+  float ascent;        /* positive, pixels above baseline */
+  float descent;       /* negative, pixels below baseline */
+  float line_height;   /* line advance in pixels */
   uint32_t last_used_frame;
 } VFontFace;
 
 VUID_HMAP_DECLARE(VFontFaceMap, VFontFaceKey, VFontFace, v_font_face_map);
 
 typedef struct VAtlasCacheEntry VAtlasCacheEntry;
+
+/* Text engine global state. */
+typedef struct VTextEngine {
+#if defined(VUID_TEXT_ENGINE_FT)
+  FT_Library ft_library;
+#endif
+#if defined(VUID_TEXT_ENGINE_HB)
+  hb_raster_draw_t* hb_draw;
+#endif
+#if defined(VUID_TEXT_ENGINE_HB_SHAPER)
+  hb_buffer_t* hb_buffer;
+#endif
+  int padding;
+} VTextEngine;
+
+/* Text engine font state. */
+typedef struct VTextEngineFont {
+#if defined(VUID_TEXT_ENGINE_FT)
+  FT_Face ft_face;
+#endif
+#if defined(VUID_TEXT_ENGINE_STB)
+  stbtt_fontinfo stb_fontinfo;
+  float scale; /* font size scale factor */
+#endif
+#if defined(VUID_TEXT_ENGINE_HB) || defined(VUID_TEXT_ENGINE_HB_SHAPER)
+  hb_face_t* hb_face;
+  hb_font_t* hb_font;
+#endif
+} VTextEngineFont;
+
+/* Shaped glyph info. */
+typedef struct VShapedGlyph {
+  uint32_t glyph_id;
+  float x_advance;
+  float y_advance;
+  float x_offset;
+  float y_offset;
+  /* byte offset of the source codepoint in the UTF-8 string */
+  uint32_t cluster;
+} VShapedGlyph;
+
+/*
+ * Holds glyph bitmap information needed for atlas placement and rendering. This
+ * has been abstracted so each font engine can implement their custom glyph
+ * bitmap sizing, bearing and rasterization logic, while the atlas packing and
+ * cache management can remain common code.
+ */
+typedef struct VGlyphBitmapDesc {
+  uint32_t glyph_id;
+  float bearing_x;
+  float bearing_y;
+  uint16_t width;
+  uint16_t height;
+} VGlyphBitmapDesc;
 
 #endif  // VUID_TEXT_MOD_FWD_H
 
@@ -1030,7 +1159,8 @@ typedef struct VAtlasCacheEntry VAtlasCacheEntry;
  * Returns a pointer into the map (valid until the next put), or NULL on
  * failure.
  */
-VUID_PKG VFontFace* v_font_face_get_or_create(VFontFaceMap* cache,
+VUID_PKG VFontFace* v_font_face_get_or_create(VTextEngine* text_engine,
+                                              VFontFaceMap* cache,
                                               VFontData* font_data,
                                               uint16_t pixel_size,
                                               uint32_t frame);
@@ -1048,21 +1178,12 @@ VUID_PKG VFontFace* v_font_face_get_or_create(VFontFaceMap* cache,
  */
 struct VFontData {
   VAllocator* allocator;
-  uint8_t* bytes; /* owned copy of the TTF/OTF bytes */
-  size_t bytes_size;
-#ifdef VUID_FONT_ENGINE_FREETYPE
-  FT_Face ft_face;
-#endif
-#ifdef VUID_FONT_ENGINE_STB
-  stbtt_fontinfo stb_info;
-#endif
-#ifdef VUID_FONT_SHAPER_HARFBUZZ
-  hb_face_t* hb_face;
-  hb_font_t* hb_font;
-#endif
+  VBuffer file_buffer;
+  VTextEngine* text_engine;
+  VTextEngineFont font;
   uint16_t font_id;
-  uint16_t
-      current_pixel_size; /* last size set via v_font_data_set_pixel_size */
+  /* last size set via v_font_data_set_pixel_size */
+  uint16_t current_pixel_size;
 };
 
 /*
@@ -1072,9 +1193,8 @@ struct VFontData {
  * Returns NULL on failure.
  */
 VUID_PKG VFontData* v_font_data_new(VAllocator* allocator,
-                                    void* ft_library,
-                                    const uint8_t* bytes,
-                                    size_t size,
+                                    VTextEngine* text_engine,
+                                    VBuffer* file_buffer,
                                     uint16_t font_id);
 
 /* Free all backend resources and the struct itself. */
@@ -1177,9 +1297,7 @@ struct VTextLayout {
 
 struct VTextModule {
   VAllocator* allocator;
-  // TODO: optionally pass in from context
-  void* ft_library; /* FT_Library cast to void*; NULL if FT not built */
-  void* hb_buffer; /* common hb_buffer_t* cast to void*; NULL if HB not built */
+  VTextEngine text_engine;
   VArray /* VFontData*[] */ font_data;
   // TODO: this could be addressed with an arena
   /* scratch buffers reused across layout calls */
@@ -1202,8 +1320,7 @@ VUID_PKG void v_text_module_drop(VTextModule* self);
 VUID_PKG void* v_text_module_get_hb_buffer(void);
 
 VUID_PKG uint16_t v_text_module_add_font(VTextModule* self,
-                                         const uint8_t* data,
-                                         size_t size);
+                                         VBuffer* file_buffer);
 
 VUID_PKG void v_text_module_remove_font(VTextModule* self, uint16_t id);
 /*
@@ -1263,10 +1380,12 @@ VUID_PKG void v_glyph_atlas_clear(VGlyphAtlas* self);
  * auto-cleared and the rasterization is retried once. Returns NULL on failure
  * (glyph too large, FT error, OOM).
  */
-VUID_PKG VAtlasCacheEntry* v_glyph_atlas_get_or_rasterize(VGlyphAtlas* self,
-                                                          VFontData* font_data,
-                                                          uint32_t glyph_id,
-                                                          uint32_t frame);
+VUID_PKG VAtlasCacheEntry* v_glyph_atlas_get_or_rasterize(
+    VGlyphAtlas* self,
+    VTextEngine* text_engine,
+    VFontData* font_data,
+    uint32_t glyph_id,
+    uint32_t frame);
 
 VUID_PKG uint32_t v_glyph_atlas_get_modified_count(VGlyphAtlas* atlas);
 VUID_PKG uint16_t v_glyph_atlas_get_size(const VGlyphAtlas* atlas);
@@ -1274,37 +1393,41 @@ VUID_PKG VImageBuffer v_glyph_atlas_get_pixel_buffer(const VGlyphAtlas* atlas);
 
 #endif  // VUID_TEXT_ATLAS_H
 
-#ifndef VUID_TEXT_SHAPER_H
-#define VUID_TEXT_SHAPER_H
-
-
+#ifndef VUID_TEXT_TEXT_ENGINE_H
+#define VUID_TEXT_TEXT_ENGINE_H
 
 /*
- * A single glyph produced by shaping.
- * Advances and offsets are in pixels (floating point).
+ * Text engine is the interface to a backend that handles font loading, font
+ * shaping and font rasterization. vuid supports freetype, harfbuzz and stb
+ * truetype. harfbuzz can run standalone with its internal rasterizer. If
+ * available, freetype and stb will use harfbuzz for shaping. Otherwise, those
+ * engines will handle shaping in a very basic manner.
  */
-struct VShapedGlyph {
-  uint32_t glyph_id;
-  float x_advance;
-  float y_advance;
-  float x_offset;
-  float y_offset;
-  uint32_t
-      cluster; /* byte offset of the source codepoint in the UTF-8 string */
-};
 
-/*
- * Shape a UTF-8 string using the given font data.
- * The font data must have had v_font_data_set_pixel_size called before shaping.
- * Appends VShapedGlyph entries to out (item_size == sizeof(VShapedGlyph)).
- * Returns false on allocation failure or shaping error.
- */
-VUID_PKG bool v_text_shape(VFontData* font_data,
-                           const char* utf8,
-                           uint32_t utf8_len,
-                           VArray* out);
 
-#endif  // VUID_TEXT_SHAPER_H
+
+// clang-format off
+/* initialize the text engine */
+VUID_PKG bool v_te_init(VTextEngine* self);
+/* cleanup the text engine resources */
+VUID_PKG void v_te_drop(VTextEngine* self);
+/* init a font. bytes is the ttf. caller guarantees its validity over the font's lifetime. */
+VUID_PKG bool v_te_init_font(VTextEngine* self, VTextEngineFont* font, const uint8_t* bytes, size_t size);
+/* cleanup a font's resources */
+VUID_PKG void v_te_drop_font(VTextEngine* self, VTextEngineFont* font);
+/* set the font pixel size. */
+VUID_PKG bool v_te_set_font_pixel_size(VTextEngine* self, VTextEngineFont* font, uint16_t pixel_size);
+/* get font metrics in pixels. */
+VUID_PKG bool v_te_get_font_metrics(VTextEngine* self, VTextEngineFont* font, float* ascent, float* descent, float* line_height);
+/* shape a UTF-8 string into an array of glyphs. */
+VUID_PKG bool v_te_shape(VTextEngine* self, VTextEngineFont* font, const char* utf8, uint32_t utf8_len, VArray* out);
+/* get bitmap size. used by glyph atlas for rect packing. */
+VUID_PKG bool v_te_get_glyph_bitmap_desc(VTextEngine* self, VTextEngineFont* font, uint32_t glyph_id, VGlyphBitmapDesc* bitmap_desc);
+/* rasterize a glyph into a target bitmap. used by glyph atlas. */
+VUID_PKG bool v_te_rasterize_glyph(VTextEngine* self, VTextEngineFont* font, VGlyphBitmapDesc* bitmap_desc, uint8_t* target, uint16_t target_width, uint16_t target_padding, uint16_t tx, uint16_t ty);
+// clang-format on
+
+#endif  // VUID_TEXT_TEXT_ENGINE_H
 
 #ifndef VUID_TEXT_TEXT_LAYOUT_H
 #define VUID_TEXT_TEXT_LAYOUT_H
@@ -2070,10 +2193,6 @@ static inline void v_stri_s_set_size(VStringInternal* self, size_t len) {
   self->sml.data[len] = '\0';
 }
 
-static inline char* v_stri_s_data(VStringInternal* self) {
-  return self->sml.data;
-}
-
 static inline const char* v_stri_s_data_const(const VStringInternal* self) {
   return self->sml.data;
 }
@@ -2085,10 +2204,6 @@ static inline size_t v_stri_l_size(const VStringInternal* self) {
 static inline void v_stri_l_set_size(VStringInternal* self, size_t len) {
   self->lon.size = len;
   self->lon.data[len] = '\0';
-}
-
-static inline char* v_stri_l_data(VStringInternal* self) {
-  return self->lon.data;
 }
 
 static inline const char* v_stri_l_data_const(const VStringInternal* self) {
@@ -2533,16 +2648,37 @@ VUID_API uint16_t v_add_font(const char* path) {
     return 0;
   }
 
-  uint16_t id = v_text_module_add_font(&g_context.text_module, data, size);
+  VBuffer file_buffer = {
+      .allocator = &g_context.allocator,
+      .data = data,
+      .size = size,
+      .source = data,
+  };
 
-  v_free(&g_context.allocator, data, size);
-
-  return id;
+  return v_text_module_add_font(&g_context.text_module, &file_buffer);
 }
 
-VUID_API uint16_t v_add_font_mem(const void* data, size_t size) {
+VUID_API uint16_t v_add_font_mem(const void* data,
+                                 size_t size,
+                                 VMemoryMode mode) {
   V_CHECK_CONTEXT(0);
-  return v_text_module_add_font(&g_context.text_module, data, size);
+
+  VBuffer file_buffer;
+
+  switch (mode) {
+    case V_MEMORY_MODE_COPY:
+      if (!v_buffer_from(&file_buffer, data, size, &g_context.allocator)) {
+        return 0;
+      }
+      break;
+    case V_MEMORY_MODE_READONLY:
+      file_buffer = v_buffer_init_static(data, size);
+      break;
+    default:
+      return 0;
+  }
+
+  return v_text_module_add_font(&g_context.text_module, &file_buffer);
 }
 
 VUID_API void v_remove_font(uint16_t id) {
@@ -2645,11 +2781,29 @@ VUID_API bool v_add_image(const char* src) {
   return v_image_store_persist(image_store, src);
 }
 
-VUID_API bool v_add_image_mem(const char* src, const void* data, size_t size) {
+VUID_API bool v_add_image_mem(const char* src,
+                              const void* data,
+                              size_t size,
+                              VMemoryMode mode) {
   V_CHECK_CONTEXT(false);
+  VBuffer buffer;
+
+  switch (mode) {
+    case V_MEMORY_MODE_COPY:
+      if (!v_buffer_from(&buffer, data, size, &g_context.allocator)) {
+        return false;
+      }
+      break;
+    case V_MEMORY_MODE_READONLY:
+      buffer = v_buffer_init_static(data, size);
+      break;
+    default:
+      return false;
+  }
+
   VImageStore* image_store = v_ctx_image_store();
 
-  return v_image_store_persist_mem(image_store, src, data, size);
+  return v_image_store_persist_mem(image_store, src, &buffer);
 }
 
 VUID_API void v_remove_image(const char* src) {
@@ -3433,8 +3587,7 @@ VUID_PKG void v_weak_ref_release(VWeakRef* weak_ref) {
 static VImage* v_image_new(VImageStore* self, const char* src);
 static VImage* v_image_new_mem(VImageStore* self,
                                const char* src,
-                               const void* data,
-                               size_t size);
+                               VBuffer* file_buffer);
 static VImage* v_image_ref(VImage* image);
 static void v_image_unref(VImage* image);
 static void v_image_clear(VImage* image);
@@ -3512,9 +3665,9 @@ VUID_PKG bool v_image_store_persist(VImageStore* self, const char* src) {
 // TODO: duplicate code
 VUID_PKG bool v_image_store_persist_mem(VImageStore* self,
                                         const char* src,
-                                        const void* file_data,
-                                        size_t file_data_size) {
-  if (v_cstr_is_empty(src)) {
+                                        VBuffer* buffer) {
+  if (v_cstr_is_empty(src) || v_buffer_is_empty(buffer)) {
+    v_buffer_drop(buffer);
     return false;
   }
 
@@ -3522,10 +3675,11 @@ VUID_PKG bool v_image_store_persist_mem(VImageStore* self,
 
   if (value) {
     value->persist = true;
+    v_buffer_drop(buffer);
     return true;
   }
 
-  VImage* image = v_image_new_mem(self, src, file_data, file_data_size);
+  VImage* image = v_image_new_mem(self, src, buffer);
 
   if (!image) {
     return false;
@@ -3606,32 +3760,32 @@ static VImage* v_image_new(VImageStore* self, const char* src) {
     return NULL;
   }
 
-  VImage* result = v_image_new_mem(self, src, file_data, file_data_size);
+  VBuffer file_buffer = {
+      .allocator = self->allocator,
+      .data = file_data,
+      .size = file_data_size,
+      .source = file_data,
+  };
 
-  v_free(self->allocator, file_data, file_data_size);
-
-  return result;
+  return v_image_new_mem(self, src, &file_buffer);
 }
 
 static VImage* v_image_new_mem(VImageStore* self,
                                const char* src,
-                               const void* file_data,
-                               size_t file_data_size) {
-  if (file_data == NULL || file_data_size == 0) {
-    return NULL;
-  }
-
+                               VBuffer* file_buffer) {
   VImage* image = v_alloc_zero(self->allocator, sizeof(VImage));
 
   if (!image) {
+    v_buffer_drop(file_buffer);
     return NULL;
   }
 
   image->ref_count = 1;
   v_ctx_object_inc(V_OBJECT_TYPE_IMAGE);
+  image->file_buffer = *file_buffer;
 
-  if (!self->loader(V_IMAGE_LOADER_OP_LOAD, &image->buffer, file_data,
-                    file_data_size)) {
+  if (!self->loader(V_IMAGE_LOADER_OP_LOAD, &image->buffer, file_buffer->data,
+                    file_buffer->size)) {
     v_image_unref(image);
     return NULL;
   }
@@ -3701,6 +3855,7 @@ static void v_image_clear(VImage* image) {
   }
 
   image->width = image->height = 0;
+  v_buffer_drop(&image->file_buffer);
 }
 
 static bool v_null_image_loader(VImageLoaderOp op,
@@ -3964,75 +4119,461 @@ VUID_PKG void v_text_layout_render(const VTextLayout* layout,
   v_command_queue_close_batch(cmdq, VUID_ATLAS_TEXTURE_ID);
 }
 
-#ifndef VUID_FONT_SHAPER_HARFBUZZ
 
 
+#if defined(VUID_TEXT_ENGINE_HB)
 
-bool v_text_shape(VFontData* font_data,
-                  const char* utf8,
-                  uint32_t utf8_len,
-                  VArray* out) {
-#ifdef VUID_FONT_ENGINE_FREETYPE
-  FT_Face ft_face = font_data->ft_face;
-  const unsigned char* s = (const unsigned char*)utf8;
-  const unsigned char* end = s + utf8_len;
-  uint32_t cluster = 0;
-  FT_UInt prev_glyph_idx = 0;
-  bool has_kerning = (bool)FT_HAS_KERNING(ft_face);
+static inline hb_bool_t v_hb_font_has_color(hb_face_t* face) {
+  return hb_ot_color_has_paint(face) || hb_ot_color_has_layers(face) ||
+         hb_ot_color_has_png(face);
+}
 
-  while (s < end) {
-    uint32_t codepoint;
-    uint32_t consumed;
+VUID_PKG bool v_te_init(VTextEngine* self) {
+  self->hb_buffer = hb_buffer_create();
 
-    if (!v_utf8_get_codepoint(s, &codepoint, &consumed)) {
-      // invalid UTF-8 sequence. bail.
+  if (!self->hb_buffer) {
+    v_te_drop(self);
+    return false;
+  }
+
+  hb_raster_image_t* hb_image = hb_raster_image_create_or_fail();
+  if (!hb_image) {
+    v_te_drop(self);
+    return false;
+  }
+
+  self->hb_draw = hb_raster_draw_create_or_fail();
+  if (!self->hb_draw) {
+    hb_raster_image_destroy(hb_image);
+    v_te_drop(self);
+    return false;
+  }
+
+  // draw now owns image
+  hb_raster_draw_recycle_image(self->hb_draw, hb_image);
+
+  return true;
+}
+
+VUID_PKG void v_te_drop(VTextEngine* self) {
+  hb_buffer_destroy(self->hb_buffer);
+  hb_raster_draw_destroy(self->hb_draw);
+
+  *self = (VTextEngine){0};
+}
+
+VUID_PKG bool v_te_init_font(VTextEngine* self,
+                             VTextEngineFont* font,
+                             const uint8_t* bytes,
+                             size_t size) {
+  UNUSED(self);
+  hb_blob_t* hb_blob = hb_blob_create((const char*)bytes, (unsigned)size,
+                                      HB_MEMORY_MODE_READONLY, NULL, NULL);
+
+  font->hb_face = hb_blob ? hb_face_create_or_fail(hb_blob, 0) : NULL;
+  font->hb_font = font->hb_face ? hb_font_create(font->hb_face) : NULL;
+
+  hb_blob_destroy(hb_blob);
+
+  // only support single color fonts until atlas supports ARGB
+
+  if (!font->hb_face || !font->hb_font || v_hb_font_has_color(font->hb_face)) {
+    v_te_drop_font(self, font);
+    return false;
+  }
+
+  return true;
+}
+
+VUID_PKG void v_te_drop_font(VTextEngine* self, VTextEngineFont* font) {
+  UNUSED(self);
+
+  hb_face_destroy(font->hb_face);
+  hb_font_destroy(font->hb_font);
+
+  *font = (VTextEngineFont){0};
+}
+
+VUID_PKG bool v_te_set_font_pixel_size(VTextEngine* self,
+                                       VTextEngineFont* font,
+                                       uint16_t pixel_size) {
+  UNUSED(self);
+  const unsigned int px = (unsigned int)pixel_size;
+  const int scale = (int)px * (int)VUID_HB_FONT_SCALE;
+
+  if (font->hb_font) {
+    hb_font_set_scale(font->hb_font, scale, scale);
+  }
+
+  return true;
+}
+
+VUID_PKG bool v_te_get_font_metrics(VTextEngine* self,
+                                    VTextEngineFont* font,
+                                    float* ascent,
+                                    float* descent,
+                                    float* line_height) {
+  UNUSED(self);
+  const hb_position_t scale = (hb_position_t)VUID_HB_FONT_SCALE;
+  hb_font_extents_t extents = {0};
+
+  hb_font_get_extents_for_direction(font->hb_font, HB_DIRECTION_LTR, &extents);
+
+  *ascent = (float)(extents.ascender / scale);
+  *descent = (float)(extents.descender / scale);
+  *line_height =
+      (float)((extents.line_gap + extents.ascender - extents.descender) /
+              scale);
+
+  return true;
+}
+
+VUID_PKG bool v_te_get_glyph_bitmap_desc(VTextEngine* self,
+                                         VTextEngineFont* font,
+                                         uint32_t glyph_id,
+                                         VGlyphBitmapDesc* bitmap_desc) {
+  hb_raster_draw_t* hb_draw = self->hb_draw;
+
+  hb_raster_draw_reset(hb_draw);
+  hb_raster_draw_set_scale_factor(hb_draw, (float)VUID_HB_FONT_SCALE,
+                                  (float)VUID_HB_FONT_SCALE);
+  hb_raster_draw_set_transform(hb_draw, 1, 0, 0, 1, 0, 0);
+
+  /* Try to compute pixel extents from glyph extents without rendering. */
+  hb_glyph_extents_t gext;
+  hb_raster_extents_t extents = {0};
+  bool have_pixel_extents = false;
+
+  if (hb_font_get_glyph_extents(font->hb_font, glyph_id, &gext) &&
+      hb_raster_draw_set_glyph_extents(hb_draw, &gext)) {
+    have_pixel_extents = hb_raster_draw_get_extents(hb_draw, &extents);
+  }
+
+  /* Fallback to rendering the glyph to obtain pixel extents. */
+  if (!have_pixel_extents) {
+    hb_raster_draw_glyph(hb_draw, font->hb_font, glyph_id);
+
+    hb_raster_image_t* img = hb_raster_draw_render(hb_draw);
+    if (!img) {
       return false;
     }
 
-    FT_UInt glyph_idx = FT_Get_Char_Index(ft_face, (FT_ULong)codepoint);
-
-    float x_advance = 0.0f;
-    if (glyph_idx > 0 &&
-        FT_Load_Glyph(ft_face, glyph_idx, VUID_FT_LOAD_FLAGS) == 0) {
-      FT_GlyphSlot slot = ft_face->glyph;
-      x_advance = (float)slot->advance.x / 64.0f;
-      // lsb_delta - rsb_delta corrects for sub-pixel hinting drift.
-      x_advance += (float)(slot->lsb_delta - slot->rsb_delta) / 64.0f;
+    if (hb_raster_image_get_format(img) != HB_RASTER_FORMAT_A8) {
+      hb_raster_draw_recycle_image(hb_draw, img);
+      return false;
     }
 
-    // Apply kerning to the previous glyph's advance.
-    if (has_kerning && prev_glyph_idx > 0 && glyph_idx > 0 && out->size > 0) {
-      FT_Vector delta;
-      if (FT_Get_Kerning(ft_face, prev_glyph_idx, glyph_idx, FT_KERNING_DEFAULT,
-                         &delta) == 0 &&
-          delta.x != 0) {
-        VShapedGlyph* prev_sg =
-            (VShapedGlyph*)v_array_get_unchecked(out, out->size - 1);
-        prev_sg->x_advance += (float)delta.x / 64.0f;
-      }
-    }
+    hb_raster_image_get_extents(img, &extents);
+    hb_raster_draw_recycle_image(hb_draw, img);
+  }
 
+  *bitmap_desc = (VGlyphBitmapDesc){
+      .glyph_id = glyph_id,
+      .width = extents.width,
+      .height = extents.height,
+      .bearing_x = (float)extents.x_origin,
+      /* convert to vuid's coordinate system: top-left origin */
+      .bearing_y = (float)(extents.y_origin + (int)extents.height),
+  };
+
+  return true;
+}
+
+VUID_PKG bool v_te_rasterize_glyph(VTextEngine* self,
+                                   VTextEngineFont* font,
+                                   VGlyphBitmapDesc* bitmap_desc,
+                                   uint8_t* target,
+                                   uint16_t target_width,
+                                   uint16_t target_padding,
+                                   uint16_t ax,
+                                   uint16_t ay) {
+  hb_raster_draw_t* hb_draw = self->hb_draw;
+
+  hb_raster_draw_reset(hb_draw);
+  hb_raster_draw_set_scale_factor(hb_draw, (float)VUID_HB_FONT_SCALE,
+                                  (float)VUID_HB_FONT_SCALE);
+  hb_raster_draw_set_transform(hb_draw, 1, 0, 0, 1, 0, 0);
+
+  /* If available, set glyph extents to get deterministic bounds. */
+  hb_glyph_extents_t gext;
+  if (hb_font_get_glyph_extents(font->hb_font, bitmap_desc->glyph_id, &gext)) {
+    hb_raster_draw_set_glyph_extents(hb_draw, &gext);
+  }
+
+  hb_raster_draw_glyph(hb_draw, font->hb_font, bitmap_desc->glyph_id);
+
+  hb_raster_image_t* img = hb_raster_draw_render(hb_draw);
+
+  if (!img) {
+    return false;
+  }
+
+  const uint8_t* buffer = hb_raster_image_get_buffer(img);
+  hb_raster_extents_t extents = {0};
+
+  hb_raster_image_get_extents(img, &extents);
+
+  const uint16_t bmp_w = (uint16_t)extents.width;
+  const uint16_t bmp_h = (uint16_t)extents.height;
+  const size_t pitch = (size_t)extents.stride;
+
+  /* hb origin: bottom-left. convert to vuid origin: top-left */
+  for (uint16_t row = 0; row < bmp_h; row++) {
+    const size_t src_row = (size_t)(bmp_h - 1 - row);
+    memcpy(target + (size_t)((ay + target_padding + row) * target_width + ax +
+                             target_padding),
+           buffer + src_row * pitch, (size_t)bmp_w);
+  }
+
+  hb_raster_draw_recycle_image(hb_draw, img);
+  return true;
+}
+#endif  // VUID_TEXT_ENGINE_HB
+
+#ifdef VUID_TEXT_ENGINE_HB_SHAPER
+VUID_PKG bool v_te_shape(VTextEngine* self,
+                         VTextEngineFont* font,
+                         const char* utf8,
+                         uint32_t utf8_len,
+                         VArray* out) {
+  hb_buffer_t* buf = self->hb_buffer;
+
+  if (!buf) {
+    return false;
+  }
+
+  hb_buffer_add_utf8(buf, utf8, (int)utf8_len, 0, (int)utf8_len);
+  hb_buffer_guess_segment_properties(buf);
+  hb_shape(font->hb_font, buf, NULL, 0);
+
+  const hb_position_t scale = (hb_position_t)VUID_HB_FONT_SCALE;
+  unsigned int glyph_count = 0;
+  hb_glyph_info_t* info = hb_buffer_get_glyph_infos(buf, &glyph_count);
+  hb_glyph_position_t* pos = hb_buffer_get_glyph_positions(buf, NULL);
+  bool result = true;
+
+  for (unsigned int i = 0; i < glyph_count; i++) {
     VShapedGlyph g = {
-        .glyph_id = glyph_idx,
-        .x_advance = x_advance,
-        .y_advance = 0.0f,
-        .x_offset = 0.0f,
-        .y_offset = 0.0f,
-        .cluster = cluster,
+        .glyph_id = info[i].codepoint,
+        .x_advance = (float)(pos[i].x_advance / scale),
+        .y_advance = (float)(pos[i].y_advance / scale),
+        .x_offset = (float)(pos[i].x_offset / scale),
+        .y_offset = (float)(pos[i].y_offset / scale),
+        .cluster = info[i].cluster,
     };
     if (!v_array_push(out, &g)) {
-      return false;
+      result = false;
+      break;
     }
-
-    prev_glyph_idx = glyph_idx;
-    cluster += consumed;
-    s += consumed;
   }
+
+  hb_buffer_clear_contents(buf);
+  return result;
+}
+#endif  // VUID_TEXT_ENGINE_HB_SHAPER
+
+
+
+VFontData* v_font_data_new(VAllocator* allocator,
+                           VTextEngine* text_engine,
+                           VBuffer* file_buffer,
+                           uint16_t font_id) {
+  VFontData* self = v_alloc_zero(allocator, sizeof(VFontData));
+  if (!self) {
+    return NULL;
+  }
+
+  self->font_id = font_id;
+  self->allocator = allocator;
+  self->file_buffer = *file_buffer;
+  self->text_engine = text_engine;
+  *file_buffer = (VBuffer){0};  // move
+
+  if (!v_te_init_font(text_engine, &self->font, self->file_buffer.data,
+                      self->file_buffer.size)) {
+    v_font_data_drop(self);
+    return NULL;
+  }
+
+  return self;
+}
+
+void v_font_data_drop(VFontData* self) {
+  if (!self) {
+    return;
+  }
+
+  v_te_drop_font(self->text_engine, &self->font);
+  v_buffer_drop(&self->file_buffer);
+  v_free(self->allocator, self, sizeof(VFontData));
+}
+
+bool v_font_data_set_pixel_size(VFontData* self, uint16_t pixel_size) {
+  if (self->current_pixel_size == pixel_size) {
+    return true;
+  } else if (v_te_set_font_pixel_size(self->text_engine, &self->font,
+                                      pixel_size)) {
+    self->current_pixel_size = pixel_size;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+#if defined(VUID_TEXT_ENGINE_STB)
+
+
+
+VUID_PKG bool v_te_init(VTextEngine* self) {
+#ifdef VUID_TEXT_ENGINE_HB_SHAPER
+  self->hb_buffer = hb_buffer_create();
+
+  if (!self->hb_buffer) {
+    v_te_drop(self);
+    return false;
+  }
+#else
+  UNUSED(self);
+#endif  // VUID_TEXT_ENGINE_HB_SHAPER
+
   return true;
-#elif defined(VUID_FONT_ENGINE_STB)
-  const stbtt_fontinfo* info = &font_data->stb_info;
-  float scale = stbtt_ScaleForMappingEmToPixels(
-      info, (float)font_data->current_pixel_size);
+}
+
+VUID_PKG void v_te_drop(VTextEngine* self) {
+#ifdef VUID_TEXT_ENGINE_HB_SHAPER
+  if (self->hb_buffer) {
+    hb_buffer_destroy((hb_buffer_t*)self->hb_buffer);
+    self->hb_buffer = NULL;
+  }
+#else
+  UNUSED(self);
+#endif  // VUID_TEXT_ENGINE_HB_SHAPER
+}
+
+VUID_PKG bool v_te_init_font(VTextEngine* self,
+                             VTextEngineFont* font,
+                             const uint8_t* bytes,
+                             size_t size) {
+  UNUSED(self, size);
+
+  int offset = stbtt_GetFontOffsetForIndex(bytes, 0);
+  if (offset < 0 || !stbtt_InitFont(&font->stb_fontinfo, bytes, offset)) {
+    return false;
+  }
+
+#ifdef VUID_TEXT_ENGINE_HB_SHAPER
+  hb_blob_t* hb_blob = hb_blob_create((const char*)bytes, (unsigned)size,
+                                      HB_MEMORY_MODE_READONLY, NULL, NULL);
+  font->hb_face = hb_blob ? hb_face_create_or_fail(hb_blob, 0) : NULL;
+  font->hb_font = font->hb_face ? hb_font_create(font->hb_face) : NULL;
+
+  hb_blob_destroy(hb_blob);
+
+  if (!font->hb_face || !font->hb_font) {
+    v_te_drop_font(self, font);
+    return false;
+  }
+#endif  // VUID_TEXT_ENGINE_HB_SHAPER
+
+  return true;
+}
+
+VUID_PKG void v_te_drop_font(VTextEngine* self, VTextEngineFont* font) {
+  UNUSED(self);
+
+#ifdef VUID_TEXT_ENGINE_HB_SHAPER
+  hb_face_destroy(font->hb_face);
+  hb_font_destroy(font->hb_font);
+#endif  // VUID_TEXT_ENGINE_HB_SHAPER
+
+  *font = (VTextEngineFont){0};
+}
+
+VUID_PKG bool v_te_set_font_pixel_size(VTextEngine* self,
+                                       VTextEngineFont* font,
+                                       uint16_t pixel_size) {
+  UNUSED(self);
+  font->scale =
+      stbtt_ScaleForMappingEmToPixels(&font->stb_fontinfo, pixel_size);
+  return true;
+}
+
+VUID_PKG bool v_te_get_font_metrics(VTextEngine* self,
+                                    VTextEngineFont* font,
+                                    float* ascent,
+                                    float* descent,
+                                    float* line_height) {
+  UNUSED(self);
+  const float scale = font->scale;
+  int ascent_u;
+  int descent_u;
+  int line_gap_u;
+
+  stbtt_GetFontVMetrics(&font->stb_fontinfo, &ascent_u, &descent_u,
+                        &line_gap_u);
+
+  *ascent = (float)ascent_u * scale;
+  *descent = (float)descent_u * scale;
+  *line_height = (float)(ascent_u - descent_u + line_gap_u) * scale;
+
+  return true;
+}
+
+VUID_PKG bool v_te_get_glyph_bitmap_desc(VTextEngine* self,
+                                         VTextEngineFont* font,
+                                         uint32_t glyph_id,
+                                         VGlyphBitmapDesc* bitmap_desc) {
+  UNUSED(self);
+  const float scale = font->scale;
+  int ix0 = 0;
+  int iy0 = 0;
+  int ix1 = 0;
+  int iy1 = 0;
+
+  stbtt_GetGlyphBitmapBox(&font->stb_fontinfo, (int)glyph_id, scale, scale,
+                          &ix0, &iy0, &ix1, &iy1);
+
+  bitmap_desc->bearing_x = (float)ix0;
+  bitmap_desc->bearing_y = (float)(-iy0);
+  bitmap_desc->width = (uint16_t)(ix1 - ix0);
+  bitmap_desc->height = (uint16_t)(iy1 - iy0);
+  bitmap_desc->glyph_id = glyph_id;
+
+  return true;
+}
+
+VUID_PKG bool v_te_rasterize_glyph(VTextEngine* self,
+                                   VTextEngineFont* font,
+                                   VGlyphBitmapDesc* bitmap_desc,
+                                   uint8_t* target,
+                                   uint16_t target_width,
+                                   uint16_t target_padding,
+                                   uint16_t ax,
+                                   uint16_t ay) {
+  UNUSED(self);
+  const float scale = font->scale;
+  const int bmp_w = (int)bitmap_desc->width;
+  const int bmp_h = (int)bitmap_desc->height;
+
+  // Render directly into the atlas pixel buffer (stride = atlas width).
+  stbtt_MakeGlyphBitmap(
+      &font->stb_fontinfo,
+      target + (ay + target_padding) * target_width + (ax + target_padding),
+      bmp_w, bmp_h, (int)target_width, scale, scale,
+      (int)bitmap_desc->glyph_id);
+
+  return true;
+}
+
+#ifndef VUID_TEXT_ENGINE_HB_SHAPER
+VUID_PKG bool v_te_shape(VTextEngine* self,
+                         VTextEngineFont* font,
+                         const char* utf8,
+                         uint32_t utf8_len,
+                         VArray* out) {
+  UNUSED(self);
+  const stbtt_fontinfo* info = &font->stb_fontinfo;
+  const float scale = font->scale;
   const unsigned char* s = (const unsigned char*)utf8;
   const unsigned char* end = s + utf8_len;
   uint32_t cluster = 0;
@@ -4082,203 +4623,11 @@ bool v_text_shape(VFontData* font_data,
     cluster += consumed;
     s += consumed;
   }
-  return true;
-#else
-  UNUSED(font_data, utf8, utf8_len, out);
-  return false;
-#endif
-}
 
-#endif  // !VUID_FONT_SHAPER_HARFBUZZ
-
-
-
-#ifdef VUID_FONT_ENGINE_FREETYPE
-
-VFontData* v_font_data_new(VAllocator* allocator,
-                           void* ft_library,
-                           const uint8_t* bytes,
-                           size_t size,
-                           uint16_t font_id) {
-  VFontData* self = v_alloc_zero(allocator, sizeof(VFontData));
-  if (!self) {
-    return NULL;
-  }
-
-  // TODO: this is user memory or a file we open. we should avoid the malloc..
-  self->bytes = v_alloc_raw(allocator, size);
-
-  if (!self->bytes) {
-    v_free(allocator, self, sizeof(VFontData));
-    return NULL;
-  }
-
-  memcpy(self->bytes, bytes, size);
-  self->bytes_size = size;
-  self->font_id = font_id;
-  self->allocator = allocator;
-
-  FT_Library library = (FT_Library)ft_library;
-  FT_Error err = FT_New_Memory_Face(library, self->bytes, (FT_Long)size, 0,
-                                    &self->ft_face);
-
-  if (err) {
-    // TODO: log freetype error
-    // printf("FT_New_Memory_Face error: %s\n", FT_Error_String(err));
-    v_free(allocator, self->bytes, size);
-    v_free(allocator, self, sizeof(VFontData));
-    return NULL;
-  }
-
-  FT_Select_Charmap(self->ft_face, FT_ENCODING_UNICODE);
-
-#ifdef VUID_FONT_SHAPER_HARFBUZZ
-  hb_face_t* hb_face = hb_ft_face_create_referenced(self->ft_face);
-  hb_font_t* hb_font = hb_ft_font_create_referenced(self->ft_face);
-
-  if (!hb_face || !hb_font) {
-    hb_font_destroy(hb_font);
-    hb_face_destroy(hb_face);
-    FT_Done_Face(self->ft_face);
-    v_free(allocator, self->bytes, size);
-    v_free(allocator, self, sizeof(VFontData));
-    return NULL;
-  }
-
-  hb_ft_font_set_load_flags(hb_font, VUID_FT_LOAD_FLAGS);
-
-  self->hb_face = hb_face;
-  self->hb_font = hb_font;
-#endif  // VUID_FONT_SHAPER_HARFBUZZ
-
-  return self;
-}
-
-void v_font_data_drop(VFontData* self) {
-  if (!self) {
-    return;
-  }
-#ifdef VUID_FONT_SHAPER_HARFBUZZ
-  if (self->hb_face) {
-    hb_face_destroy(self->hb_face);
-    self->hb_face = NULL;
-  }
-  if (self->hb_font) {
-    hb_font_destroy(self->hb_font);
-    self->hb_font = NULL;
-  }
-#endif
-  if (self->ft_face) {
-    FT_Done_Face(self->ft_face);
-    self->ft_face = NULL;
-  }
-  v_free(self->allocator, self->bytes, self->bytes_size);
-  v_free(self->allocator, self, sizeof(VFontData));
-}
-
-bool v_font_data_set_pixel_size(VFontData* self, uint16_t pixel_size) {
-  if (self->current_pixel_size == pixel_size) {
-    return true;
-  } else if (FT_Set_Pixel_Sizes(self->ft_face, 0, pixel_size) == 0) {
-    self->current_pixel_size = pixel_size;
-    return true;
-  } else {
-    return false;
-  }
-}
-
-#elif defined(VUID_FONT_ENGINE_STB)
-
-VFontData* v_font_data_new(VAllocator* allocator,
-                           void* ft_library,
-                           const uint8_t* bytes,
-                           size_t size,
-                           uint16_t font_id) {
-  UNUSED(ft_library);
-  VFontData* self = v_alloc_zero(allocator, sizeof(VFontData));
-  if (!self)
-    return NULL;
-
-  self->bytes = v_alloc_raw(allocator, size);
-  if (!self->bytes) {
-    v_free(allocator, self, sizeof(VFontData));
-    return NULL;
-  }
-  memcpy(self->bytes, bytes, size);
-  self->bytes_size = size;
-  self->font_id = font_id;
-  self->allocator = allocator;
-
-  int offset = stbtt_GetFontOffsetForIndex(self->bytes, 0);
-  if (offset < 0 || !stbtt_InitFont(&self->stb_info, self->bytes, offset)) {
-    v_free(allocator, self->bytes, size);
-    v_free(allocator, self, sizeof(VFontData));
-    return NULL;
-  }
-
-#ifdef VUID_FONT_SHAPER_HARFBUZZ
-  hb_blob_t* hb_blob = hb_blob_create((const char*)self->bytes, (unsigned)size,
-                                      HB_MEMORY_MODE_READONLY, NULL, NULL);
-  hb_face_t* hb_face = hb_blob ? hb_face_create(hb_blob, 0) : NULL;
-  hb_font_t* hb_font = hb_face ? hb_font_create(hb_face) : NULL;
-
-  hb_blob_destroy(hb_blob);
-
-  if (!hb_face || !hb_font) {
-    hb_face_destroy(hb_face);
-    hb_font_destroy(hb_font);
-    v_free(allocator, self->bytes, size);
-    v_free(allocator, self, sizeof(VFontData));
-    return NULL;
-  }
-
-  self->hb_face = hb_face;
-  self->hb_font = hb_font;
-#endif  // VUID_FONT_SHAPER_HARFBUZZ
-
-  return self;
-}
-
-void v_font_data_drop(VFontData* self) {
-  if (!self) {
-    return;
-  }
-
-#ifdef VUID_FONT_SHAPER_HARFBUZZ
-  if (self->hb_face) {
-    hb_face_destroy(self->hb_face);
-    self->hb_face = NULL;
-  }
-  if (self->hb_font) {
-    hb_font_destroy(self->hb_font);
-    self->hb_font = NULL;
-  }
-#endif
-  v_free(self->allocator, self->bytes, self->bytes_size);
-  v_free(self->allocator, self, sizeof(VFontData));
-}
-
-bool v_font_data_set_pixel_size(VFontData* self, uint16_t pixel_size) {
-  if (self->current_pixel_size == pixel_size) {
-    return true;
-  }
-
-#ifdef VUID_FONT_SHAPER_HARFBUZZ
-  hb_font_t* hb_font = self->hb_font;
-
-  if (!hb_font) {
-    return false;
-  }
-
-  const int scale = (int)pixel_size * (int)VUID_HB_FONT_SCALE;
-  hb_font_set_scale(hb_font, scale, scale);
-#endif
-
-  self->current_pixel_size = pixel_size;
   return true;
 }
-
-#endif  // VUID_FONT_ENGINE_*
+#endif  // !VUID_TEXT_ENGINE_HB_SHAPER
+#endif  // VUID_TEXT_ENGINE_STB
 
 
 
@@ -4291,19 +4640,13 @@ VUID_PKG bool v_text_module_init(VTextModule* self,
       .next_font_id = 1,
   };
 
-#ifdef VUID_FONT_ENGINE_FREETYPE
-  FT_Library library;
-  if (FT_Init_FreeType(&library) != 0) {
-    return false;
+  if (!v_te_init(&self->text_engine)) {
+    goto defer;
   }
-  self->ft_library = library;
-#endif  // VUID_FONT_ENGINE_FREETYPE
 
   if (!v_glyph_atlas_init(&self->atlas, allocator, (uint16_t)atlas_size,
                           (uint16_t)atlas_max_size)) {
-    v_text_module_drop(self);
-    *self = (VTextModule){0};
-    return false;
+    goto defer;
   }
 
   // TODO: allocs can fail
@@ -4314,6 +4657,11 @@ VUID_PKG bool v_text_module_init(VTextModule* self,
   self->scratch_lines = v_array_init(allocator, sizeof(VTextLine), 8);
 
   return true;
+
+defer:
+  v_text_module_drop(self);
+  *self = (VTextModule){0};
+  return false;
 }
 
 VUID_PKG void v_text_module_drop(VTextModule* self) {
@@ -4329,54 +4677,27 @@ VUID_PKG void v_text_module_drop(VTextModule* self) {
   v_array_drop(&self->scratch_lines);
   v_glyph_atlas_drop(&self->atlas);
 
-#ifdef VUID_FONT_SHAPER_HARFBUZZ
-  if (self->hb_buffer) {
-    hb_buffer_destroy((hb_buffer_t*)self->hb_buffer);
-    self->hb_buffer = NULL;
-  }
-#endif
-
-#ifdef VUID_FONT_ENGINE_FREETYPE
-  if (self->ft_library) {
-    FT_Done_FreeType((FT_Library)self->ft_library);
-    self->ft_library = NULL;
-  }
-#endif
+  v_te_drop(&self->text_engine);
 }
 
 VUID_PKG void* v_text_module_get_hb_buffer(void) {
 #ifdef VUID_FONT_SHAPER_HARFBUZZ
   VTextModule* text_module = v_ctx_text_module();
-  hb_buffer_t* buf = text_module->hb_buffer;
-
-  if (buf) {
-    return buf;
-  }
-
-  buf = hb_buffer_create();
-
-  if (!buf) {
-    return NULL;
-  }
-
-  text_module->hb_buffer = buf;
-
-  return buf;
+  return text_module->hb_buffer;
 #else
   return NULL;
 #endif
 }
 
 VUID_PKG uint16_t v_text_module_add_font(VTextModule* self,
-                                         const uint8_t* data,
-                                         size_t size) {
-  if (data == NULL || size == 0) {
+                                         VBuffer* file_buffer) {
+  if (v_buffer_is_empty(file_buffer)) {
     return 0;
   }
 
   uint16_t font_id = self->next_font_id;
-  VFontData* font_data =
-      v_font_data_new(self->allocator, self->ft_library, data, size, font_id);
+  VFontData* font_data = v_font_data_new(self->allocator, &self->text_engine,
+                                         file_buffer, font_id);
 
   if (!font_data) {
     return 0;
@@ -4445,16 +4766,17 @@ VUID_PKG VTextLayout* v_text_module_create_layout_z(VTextModule* self,
     return NULL;
   }
 
-  VFontFace* face = v_font_face_get_or_create(&self->font_face_cache, font_data,
-                                              pixel_size, self->current_frame);
+  VFontFace* face =
+      v_font_face_get_or_create(&self->text_engine, &self->font_face_cache,
+                                font_data, pixel_size, self->current_frame);
   if (!face) {
     return NULL;
   }
 
   v_array_clear(&self->scratch_shaped);
 
-  if (!v_text_shape(font_data, utf8, (uint32_t)utf8_len,
-                    &self->scratch_shaped)) {
+  if (!v_te_shape(&self->text_engine, &font_data->font, utf8,
+                  (uint32_t)utf8_len, &self->scratch_shaped)) {
     return NULL;
   }
 
@@ -4509,59 +4831,13 @@ VUID_PKG void v_text_module_maybe_rasterize_glyphs(VTextModule* self,
 
   v_font_data_set_pixel_size(fd, layout->pixel_size);
   for (uint32_t i = 0; i < layout->glyph_count; i++) {
-    v_glyph_atlas_get_or_rasterize(glyph_atlas, fd, layout->glyphs[i].glyph_id,
+    v_glyph_atlas_get_or_rasterize(glyph_atlas, &self->text_engine, fd,
+                                   layout->glyphs[i].glyph_id,
                                    self->current_frame);
   }
 
   layout->rasterized_at = modified_count;
 }
-
-#ifdef VUID_FONT_SHAPER_HARFBUZZ
-
-
-
-
-bool v_text_shape(VFontData* font_data,
-                  const char* utf8,
-                  uint32_t utf8_len,
-                  VArray* out) {
-  hb_buffer_t* buf = v_text_module_get_hb_buffer();
-
-  if (!buf) {
-    return false;
-  }
-
-  hb_buffer_add_utf8(buf, utf8, (int)utf8_len, 0, (int)utf8_len);
-  hb_buffer_guess_segment_properties(buf);
-  hb_shape(font_data->hb_font, buf, NULL, 0);
-
-  unsigned int glyph_count = 0;
-  hb_glyph_info_t* info = hb_buffer_get_glyph_infos(buf, &glyph_count);
-  hb_glyph_position_t* pos = hb_buffer_get_glyph_positions(buf, NULL);
-  bool result = true;
-
-  for (unsigned int i = 0; i < glyph_count; i++) {
-    VShapedGlyph g = {
-        // after shaping, info[i].codepoint holds the glyph id
-        .glyph_id = info[i].codepoint,
-        .x_advance = (float)pos[i].x_advance / VUID_HB_FONT_SCALE_F,
-        .y_advance = (float)pos[i].y_advance / VUID_HB_FONT_SCALE_F,
-        .x_offset = (float)pos[i].x_offset / VUID_HB_FONT_SCALE_F,
-        .y_offset = (float)pos[i].y_offset / VUID_HB_FONT_SCALE_F,
-        .cluster = info[i].cluster,
-    };
-    if (!v_array_push(out, &g)) {
-      result = false;
-      break;
-    }
-  }
-
-  hb_buffer_clear_contents(buf);
-  return result;
-}
-
-#endif  // VUID_FONT_SHAPER_HARFBUZZ
-
 
 
 
@@ -4598,7 +4874,8 @@ static void VFontFace_drop(VFontFace* value) {
 
 VUID_HMAP_IMPL(VFontFaceMap, VFontFaceKey, VFontFace, v_font_face_map)
 
-VFontFace* v_font_face_get_or_create(VFontFaceMap* cache,
+VFontFace* v_font_face_get_or_create(VTextEngine* text_engine,
+                                     VFontFaceMap* cache,
                                      VFontData* font_data,
                                      uint16_t pixel_size,
                                      uint32_t frame) {
@@ -4623,21 +4900,10 @@ VFontFace* v_font_face_get_or_create(VFontFaceMap* cache,
       .last_used_frame = frame,
   };
 
-#ifdef VUID_FONT_ENGINE_FREETYPE
-  FT_Face ft_face = font_data->ft_face;
-  face.ascent = (float)ft_face->size->metrics.ascender / 64.0f;
-  face.descent = (float)ft_face->size->metrics.descender / 64.0f;
-  face.line_height = (float)ft_face->size->metrics.height / 64.0f;
-#elif defined(VUID_FONT_ENGINE_STB)
-  int ascent_u, descent_u, line_gap_u;
-  stbtt_GetFontVMetrics(&font_data->stb_info, &ascent_u, &descent_u,
-                        &line_gap_u);
-  float scale =
-      stbtt_ScaleForMappingEmToPixels(&font_data->stb_info, (float)pixel_size);
-  face.ascent = (float)ascent_u * scale;
-  face.descent = (float)descent_u * scale;
-  face.line_height = (float)(ascent_u - descent_u + line_gap_u) * scale;
-#endif  // VUID_FONT_ENGINE_*
+  if (!v_te_get_font_metrics(text_engine, &font_data->font, &face.ascent,
+                             &face.descent, &face.line_height)) {
+    return NULL;
+  }
 
   VFontFaceMapResult result = v_font_face_map_put(cache, face);
 
@@ -4649,33 +4915,21 @@ VFontFace* v_font_face_get_or_create(VFontFaceMap* cache,
 
 
 
-
 /* border size for atlas glyphs */
 #define VUID_GLYPH_PAD (1)
 /* default atlas w/h */
 #define VUID_DEFAULT_ATLAS_SIZE (512)
 
-/*
- * Holds glyph bitmap information needed for atlas placement and rendering. This
- * has been abstracted so each font engine can implement their custom glyph
- * bitmap sizing, bearing and rasterization logic, while the atlas packing and
- * cache management can remain common code.
- */
-typedef struct VGlyphBitmapDesc {
-  uint32_t glyph_id;
-  float bearing_x;
-  float bearing_y;
-  uint16_t width;
-  uint16_t height;
-} VGlyphBitmapDesc;
-
 /* get the font engine specific bitmap description for a glyph */
-static bool v__get_glyph_bitmap_desc(uint32_t glyph_id,
+static bool v__get_glyph_bitmap_desc(VTextEngine* text_engine,
+                                     uint32_t glyph_id,
+
                                      VFontData* font_data,
                                      VGlyphBitmapDesc* bitmap_desc);
 
 /* rasterize a glyph into the atlas with the current font engine */
 static bool v__rasterize_glyph(VGlyphAtlas* self,
+                               VTextEngine* text_engine,
                                VGlyphBitmapDesc* bitmap_desc,
                                VFontData* font_data,
                                uint16_t ax,
@@ -4981,10 +5235,12 @@ VUID_PKG void v_glyph_atlas_clear(VGlyphAtlas* self) {
   v_array_push(&self->skyline, &initial);
 }
 
-VUID_PKG VAtlasCacheEntry* v_glyph_atlas_get_or_rasterize(VGlyphAtlas* self,
-                                                          VFontData* font_data,
-                                                          uint32_t glyph_id,
-                                                          uint32_t frame) {
+VUID_PKG VAtlasCacheEntry* v_glyph_atlas_get_or_rasterize(
+    VGlyphAtlas* self,
+    VTextEngine* text_engine,
+    VFontData* font_data,
+    uint32_t glyph_id,
+    uint32_t frame) {
   uint16_t pixel_size = font_data->current_pixel_size;
   VAtlasCacheKey key = {
       .glyph_id = glyph_id,
@@ -4999,7 +5255,7 @@ VUID_PKG VAtlasCacheEntry* v_glyph_atlas_get_or_rasterize(VGlyphAtlas* self,
 
   VGlyphBitmapDesc bitmap;
 
-  if (!v__get_glyph_bitmap_desc(glyph_id, font_data, &bitmap)) {
+  if (!v__get_glyph_bitmap_desc(text_engine, glyph_id, font_data, &bitmap)) {
     return NULL;
   }
 
@@ -5054,7 +5310,7 @@ VUID_PKG VAtlasCacheEntry* v_glyph_atlas_get_or_rasterize(VGlyphAtlas* self,
   }
   skyline_merge(&self->skyline);
 
-  if (!v__rasterize_glyph(self, &bitmap, font_data, ax, ay)) {
+  if (!v__rasterize_glyph(self, text_engine, &bitmap, font_data, ax, ay)) {
     return NULL;
   }
 
@@ -5095,87 +5351,258 @@ VUID_PKG VImageBuffer v_glyph_atlas_get_pixel_buffer(const VGlyphAtlas* atlas) {
   return result;
 }
 
-static bool v__get_glyph_bitmap_desc(uint32_t glyph_id,
+static bool v__get_glyph_bitmap_desc(VTextEngine* text_engine,
+                                     uint32_t glyph_id,
                                      VFontData* font_data,
                                      VGlyphBitmapDesc* bitmap_desc) {
-#ifdef VUID_FONT_ENGINE_FREETYPE
-  FT_Face ft_face = font_data->ft_face;
+  return v_te_get_glyph_bitmap_desc(text_engine, &font_data->font, glyph_id,
+                                    bitmap_desc);
+}
+
+static bool v__rasterize_glyph(VGlyphAtlas* self,
+                               VTextEngine* text_engine,
+                               VGlyphBitmapDesc* bitmap_desc,
+                               VFontData* font_data,
+                               uint16_t ax,
+                               uint16_t ay) {
+  return v_te_rasterize_glyph(text_engine, &font_data->font, bitmap_desc,
+                              self->pixels, self->width, VUID_GLYPH_PAD, ax,
+                              ay);
+}
+
+#if defined(VUID_TEXT_ENGINE_FT)
+
+
+VUID_PKG bool v_te_init(VTextEngine* self) {
+  FT_Library library;
+  if (FT_Init_FreeType(&library) != 0) {
+    return false;
+  }
+
+  *self = (VTextEngine){
+      .ft_library = library,
+  };
+
+#ifdef VUID_TEXT_ENGINE_HB_SHAPER
+  self->hb_buffer = hb_buffer_create();
+
+  if (!self->hb_buffer) {
+    v_te_drop(self);
+    return false;
+  }
+#endif  // VUID_TEXT_ENGINE_HB_SHAPER
+
+  return true;
+}
+
+VUID_PKG void v_te_drop(VTextEngine* self) {
+#ifdef VUID_TEXT_ENGINE_HB_SHAPER
+  if (self->hb_buffer) {
+    hb_buffer_destroy((hb_buffer_t*)self->hb_buffer);
+    self->hb_buffer = NULL;
+  }
+#endif  // VUID_TEXT_ENGINE_HB_SHAPER
+
+  if (self->ft_library) {
+    FT_Done_FreeType(self->ft_library);
+    self->ft_library = NULL;
+  }
+}
+
+VUID_PKG bool v_te_init_font(VTextEngine* self,
+                             VTextEngineFont* font,
+                             const uint8_t* bytes,
+                             size_t size) {
+  FT_Face face;
+  FT_Error err;
+
+  err = FT_New_Memory_Face(self->ft_library, bytes, (FT_Long)size, 0, &face);
+
+  if (err) {
+    // TODO: log freetype error
+    // printf("FT_New_Memory_Face error: %s\n", FT_Error_String(err));
+    return false;
+  }
+
+  *font = (VTextEngineFont){
+      .ft_face = face,
+  };
+
+  FT_Select_Charmap(face, FT_ENCODING_UNICODE);
+
+#if defined(VUID_TEXT_ENGINE_HB_SHAPER)
+  font->hb_face = hb_ft_face_create_referenced(face);
+  font->hb_font = hb_ft_font_create_referenced(face);
+
+  if (!font->hb_face || !font->hb_font) {
+    v_te_drop_font(self, font);
+    return false;
+  }
+
+  hb_ft_font_set_load_flags(font->hb_font, VUID_FT_LOAD_FLAGS);
+#endif  // VUID_TEXT_ENGINE_HB_SHAPER
+
+  return true;
+}
+
+VUID_PKG void v_te_drop_font(VTextEngine* self, VTextEngineFont* font) {
+  UNUSED(self);
+
+#if defined(VUID_TEXT_ENGINE_HB_SHAPER)
+  if (font->hb_font) {
+    hb_font_destroy(font->hb_font);
+    font->hb_font = NULL;
+  }
+  if (font->hb_face) {
+    hb_face_destroy(font->hb_face);
+    font->hb_face = NULL;
+  }
+#endif  // VUID_TEXT_ENGINE_HB_SHAPER
+
+  if (font->ft_face) {
+    FT_Done_Face(font->ft_face);
+    font->ft_face = NULL;
+  }
+
+  *font = (VTextEngineFont){0};
+}
+
+VUID_PKG bool v_te_set_font_pixel_size(VTextEngine* self,
+                                       VTextEngineFont* font,
+                                       uint16_t pixel_size) {
+  UNUSED(self);
+  return (FT_Set_Pixel_Sizes(font->ft_face, 0, (FT_UInt)pixel_size) == 0);
+}
+
+VUID_PKG bool v_te_get_font_metrics(VTextEngine* self,
+                                    VTextEngineFont* font,
+                                    float* ascent,
+                                    float* descent,
+                                    float* line_height) {
+  UNUSED(self);
+
+  FT_Face face = font->ft_face;
+
+  *ascent = (float)face->size->metrics.ascender / 64.0f;
+  *descent = (float)face->size->metrics.descender / 64.0f;
+  *line_height = (float)face->size->metrics.height / 64.0f;
+
+  return true;
+}
+
+VUID_PKG bool v_te_get_glyph_bitmap_desc(VTextEngine* self,
+                                         VTextEngineFont* font,
+                                         uint32_t glyph_id,
+                                         VGlyphBitmapDesc* bitmap_desc) {
+  UNUSED(self);
+  FT_Face ft_face = font->ft_face;
 
   if (FT_Load_Glyph(ft_face, glyph_id, VUID_FT_LOAD_FLAGS) != 0) {
     return false;
   }
 
-  if (FT_Render_Glyph(font_data->ft_face->glyph, FT_RENDER_MODE_NORMAL) != 0) {
+  if (FT_Render_Glyph(font->ft_face->glyph, FT_RENDER_MODE_NORMAL) != 0) {
     return false;
   }
 
+  bitmap_desc->glyph_id = glyph_id;
   bitmap_desc->width = (uint16_t)ft_face->glyph->bitmap.width;
   bitmap_desc->height = (uint16_t)ft_face->glyph->bitmap.rows;
   bitmap_desc->bearing_x = (float)ft_face->glyph->bitmap_left;
   bitmap_desc->bearing_y = (float)ft_face->glyph->bitmap_top;
-#elif defined(VUID_FONT_ENGINE_STB)
-  float scale = stbtt_ScaleForMappingEmToPixels(
-      &font_data->stb_info, (float)font_data->current_pixel_size);
-
-  int ix0 = 0;
-  int iy0 = 0;
-  int ix1 = 0;
-  int iy1 = 0;
-
-  stbtt_GetGlyphBitmapBox(&font_data->stb_info, (int)glyph_id, scale, scale,
-                          &ix0, &iy0, &ix1, &iy1);
-
-  bitmap_desc->bearing_x = (float)ix0;
-  bitmap_desc->bearing_y = (float)(-iy0);
-  bitmap_desc->width = (uint16_t)(ix1 - ix0);
-  bitmap_desc->height = (uint16_t)(iy1 - iy0);
-  bitmap_desc->glyph_id = glyph_id;
-#else
-#error \
-    "No font engine defined. Use VUID_FONT_ENGINE_STB or VUID_FONT_ENGINE_FREETYPE."
-#endif
-
-  bitmap_desc->glyph_id = glyph_id;
 
   return true;
 }
 
-static bool v__rasterize_glyph(VGlyphAtlas* self,
-                               VGlyphBitmapDesc* bitmap_desc,
-                               VFontData* font_data,
-                               uint16_t ax,
-                               uint16_t ay) {
-#ifdef VUID_FONT_ENGINE_FREETYPE
-  UNUSED(bitmap_desc);
-  FT_Bitmap* bmp = &font_data->ft_face->glyph->bitmap;
+VUID_PKG bool v_te_rasterize_glyph(VTextEngine* self,
+                                   VTextEngineFont* font,
+                                   VGlyphBitmapDesc* bitmap_desc,
+                                   uint8_t* target,
+                                   uint16_t target_width,
+                                   uint16_t target_padding,
+                                   uint16_t tx,
+                                   uint16_t ty) {
+  UNUSED(self, bitmap_desc);
+  FT_Bitmap* bmp = &font->ft_face->glyph->bitmap;
   uint16_t bmp_w = (uint16_t)bmp->width;
   uint16_t bmp_h = (uint16_t)bmp->rows;
   size_t pitch = (bmp->pitch >= 0) ? (size_t)bmp->pitch : (size_t)(-bmp->pitch);
 
   for (uint16_t row = 0; row < bmp_h; row++) {
-    memcpy(self->pixels + ((size_t)(ay + VUID_GLYPH_PAD + row) * self->width +
-                           ax + VUID_GLYPH_PAD),
+    memcpy(target + ((size_t)(ty + target_padding + row) * target_width + tx +
+                     target_padding),
            bmp->buffer + (size_t)row * pitch, bmp_w);
   }
-#elif defined(VUID_FONT_ENGINE_STB)
-  float scale = stbtt_ScaleForMappingEmToPixels(
-      &font_data->stb_info, (float)font_data->current_pixel_size);
-  int bmp_w = (int)bitmap_desc->width;
-  int bmp_h = (int)bitmap_desc->height;
-
-  // Render directly into the atlas pixel buffer (stride = atlas width).
-  stbtt_MakeGlyphBitmap(&font_data->stb_info,
-                        self->pixels + (ay + VUID_GLYPH_PAD) * self->width +
-                            (ax + VUID_GLYPH_PAD),
-                        bmp_w, bmp_h, (int)self->width, scale, scale,
-                        (int)bitmap_desc->glyph_id);
-#else
-#error \
-    "No font engine defined. Use VUID_FONT_ENGINE_STB or VUID_FONT_ENGINE_FREETYPE."
-#endif
 
   return true;
 }
+
+#ifndef VUID_TEXT_ENGINE_HB_SHAPER
+VUID_PKG bool v_te_shape(VTextEngine* self,
+                         VTextEngineFont* font,
+                         const char* utf8,
+                         uint32_t utf8_len,
+                         VArray* out) {
+  UNUSED(self);
+  FT_Face ft_face = font->ft_face;
+  const unsigned char* s = (const unsigned char*)utf8;
+  const unsigned char* end = s + utf8_len;
+  uint32_t cluster = 0;
+  FT_UInt prev_glyph_idx = 0;
+  bool has_kerning = (bool)FT_HAS_KERNING(ft_face);
+
+  while (s < end) {
+    uint32_t codepoint;
+    uint32_t consumed;
+
+    if (!v_utf8_get_codepoint(s, &codepoint, &consumed)) {
+      // invalid UTF-8 sequence. bail.
+      return false;
+    }
+
+    FT_UInt glyph_idx = FT_Get_Char_Index(ft_face, (FT_ULong)codepoint);
+
+    float x_advance = 0.0f;
+    if (glyph_idx > 0 &&
+        FT_Load_Glyph(ft_face, glyph_idx, VUID_FT_LOAD_FLAGS) == 0) {
+      FT_GlyphSlot slot = ft_face->glyph;
+      x_advance = (float)slot->advance.x / 64.0f;
+      // lsb_delta - rsb_delta corrects for sub-pixel hinting drift.
+      x_advance += (float)(slot->lsb_delta - slot->rsb_delta) / 64.0f;
+    }
+
+    // Apply kerning to the previous glyph's advance.
+    if (has_kerning && prev_glyph_idx > 0 && glyph_idx > 0 && out->size > 0) {
+      FT_Vector delta;
+      if (FT_Get_Kerning(ft_face, prev_glyph_idx, glyph_idx, FT_KERNING_DEFAULT,
+                         &delta) == 0 &&
+          delta.x != 0) {
+        VShapedGlyph* prev_sg =
+            (VShapedGlyph*)v_array_get_unchecked(out, out->size - 1);
+        prev_sg->x_advance += (float)delta.x / 64.0f;
+      }
+    }
+
+    VShapedGlyph g = {
+        .glyph_id = glyph_idx,
+        .x_advance = x_advance,
+        .y_advance = 0.0f,
+        .x_offset = 0.0f,
+        .y_offset = 0.0f,
+        .cluster = cluster,
+    };
+    if (!v_array_push(out, &g)) {
+      return false;
+    }
+
+    prev_glyph_idx = glyph_idx;
+    cluster += consumed;
+    s += consumed;
+  }
+  return true;
+}
+#endif  // !VUID_TEXT_ENGINE_HB_SHAPER
+#endif  // VUID_TEXT_ENGINE_FT
 
 
 
@@ -5240,13 +5667,13 @@ static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
     // clang-format off
     [VS_WIDTH] = {
       .tag = VSTAG_SIZING,
-      .default_value.sizing = {V_SIZING_FIT},
+      .default_value.sizing = {V_SIZING_FIT, 0, 0},
       .set_fn.sizing = &vs_set_width,
       .get_fn.sizing = &vs_get_width,
     },
     [VS_HEIGHT] = {
       .tag = VSTAG_SIZING,
-      .default_value.sizing = {V_SIZING_FIT},
+      .default_value.sizing = {V_SIZING_FIT, 0, 0},
       .set_fn.sizing = &vs_set_height,
       .get_fn.sizing = &vs_get_height,
     },

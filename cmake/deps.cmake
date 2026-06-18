@@ -85,34 +85,13 @@ else()
 endif()
 
 #
-# freetype2
-#
-
-# TODO: review
-set(FT_DISABLE_ZLIB ON CACHE BOOL "freetype zlib option")
-set(FT_DISABLE_BZIP2 ON CACHE BOOL "freetype bzip2 option")
-set(FT_DISABLE_PNG ON CACHE BOOL "freetype png option")
-set(FT_DISABLE_BROTLI ON CACHE BOOL "freetype option")
-set(FT_DISABLE_HARFBUZZ OFF CACHE BOOL "freetype harfbuzz option" FORCE)
-set(FT_DYNAMIC_HARFBUZZ OFF CACHE BOOL "freetype harfbuzz option" FORCE)
-set(FT_REQUIRE_HARFBUZZ OFF CACHE BOOL "freetype harfbuzz option" FORCE)
-set(FT_ENABLE_ERROR_STRINGS ON CACHE BOOL "freetype option")
-
-FetchContent_Declare(
-  freetype2_src_dep
-  GIT_REPOSITORY https://gitlab.freedesktop.org/freetype/freetype.git
-  GIT_TAG VER-2-14-3
-)
-FetchContent_MakeAvailable(freetype2_src_dep)
-
-#
 # harfbuzz
 #
 
 FetchContent_Declare(
     harfbuzz_source
     GIT_REPOSITORY https://github.com/harfbuzz/harfbuzz.git
-    GIT_TAG        14.2.0
+    GIT_TAG        14.2.1
     SOURCE_SUBDIR  src
 )
 
@@ -122,22 +101,56 @@ add_library(harfbuzz_world STATIC
     ${harfbuzz_source_SOURCE_DIR}/src/harfbuzz-world.cc
 )
 
+if (UNIX OR MINGW)
+  # Make symbols link locally
+  include (CheckCXXCompilerFlag)
+  CHECK_CXX_COMPILER_FLAG(-Bsymbolic-functions CXX_SUPPORTS_FLAG_BSYMB_FUNCS)
+  if (CXX_SUPPORTS_FLAG_BSYMB_FUNCS)
+    link_libraries(-Bsymbolic-functions)
+  endif ()
+
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fno-rtti -fno-exceptions -fno-threadsafe-statics")
+    set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "m")
+    set(CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES "")
+    set_target_properties(harfbuzz_world PROPERTIES LINKER_LANGUAGE C)
+  endif ()
+endif ()
+
 target_compile_definitions(harfbuzz_world PRIVATE
     HB_NO_FEATURES_H
-    HB_HAS_FREETYPE
-)
-
-target_include_directories(harfbuzz_world PUBLIC
-    ${harfbuzz_source_SOURCE_DIR}/src
-)
-
-target_include_directories(harfbuzz_world PUBLIC
-    $<TARGET_PROPERTY:freetype,INTERFACE_INCLUDE_DIRECTORIES>
+    HB_MINI # TODO: HB_TINY or HB_LEAN?
+    HB_HAS_RASTER
+    $<$<BOOL:${APPLE}>:HB_HAS_CORE_TEXT>
+    $<$<BOOL:${WIN32}>:HB_HAS_UNISCRIBE>
+    $<$<BOOL:${WIN32}>:HB_HAS_GDI>
+    # by default, mt using C++ std::mutex, requiring a link to libc++. use pthread instead.
+    $<$<BOOL:${UNIX}>:HAVE_PTHREAD>
 )
 
 if (WIN32)
-target_compile_options(harfbuzz_world PRIVATE
-    $<$<BOOL:${MSVC}>:/bigobj>
-    $<$<BOOL:${MINGW}>:-Wa,-mbig-obj>
-)
+  target_compile_options(harfbuzz_world PRIVATE
+      $<$<BOOL:${MSVC}>:/bigobj>
+      $<$<BOOL:${MINGW}>:-Wa,-mbig-obj>
+  )
+  target_link_libraries(harfbuzz_world PUBLIC
+    usp10
+    gdi32
+    rpcrt4
+  )
+elseif (APPLE)
+  cmake_minimum_required(VERSION 3.24)
+  target_link_libraries(harfbuzz_world PUBLIC
+    "$<LINK_LIBRARY:FRAMEWORK,CoreText>"
+    "$<LINK_LIBRARY:FRAMEWORK,CoreGraphics>"
+    "$<LINK_LIBRARY:FRAMEWORK,CoreFoundation>"
+  )
+else()
+  find_package(Threads)
+  target_link_libraries(harfbuzz_world PUBLIC Threads::Threads)
 endif()
+
+target_include_directories(harfbuzz_world PUBLIC
+    ${harfbuzz_source_SOURCE_DIR}/src
+    $<$<BOOL:${VUID_USE_FT}>:$<TARGET_PROPERTY:freetype,INTERFACE_INCLUDE_DIRECTORIES>>
+)

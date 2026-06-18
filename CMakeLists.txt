@@ -110,7 +110,6 @@ target_link_libraries(${SDLI_LIB} PUBLIC
   SDL3::SDL3
   sdli_base
   harfbuzz_world
-  freetype
   $<$<NOT:$<C_COMPILER_ID:MSVC>>:m>
 )
 
@@ -127,8 +126,8 @@ target_compile_definitions(${SDLI_LIB} PUBLIC
   SDLI_VERSION="${PROJECT_VERSION}"
   $<$<PLATFORM_ID:Windows>:UNICODE>
   $<$<PLATFORM_ID:Windows>:_UNICODE>
-  VUID_FONT_ENGINE_FREETYPE
-  VUID_FONT_SHAPER_HARFBUZZ
+  VUID_TEXT_ENGINE_HB
+  VUID_TEXT_ENGINE_HB_SHAPER
   # for incbin to work with assets
   "SDLI_ASSETS_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/assets/\""
 )
@@ -169,11 +168,13 @@ elseif(APPLE)
   set_target_properties(${SDLI_EXE} PROPERTIES
     MACOSX_BUNDLE TRUE
   )
+  set_target_properties(${SDLI_EXE} PROPERTIES LINKER_LANGUAGE C)
 else()
   target_link_options(${SDLI_EXE} PRIVATE
     # gcc
     $<$<CXX_COMPILER_ID:GNU>:-static-libgcc>
   )
+  set_target_properties(${SDLI_EXE} PROPERTIES LINKER_LANGUAGE C)
 endif()
 
 target_link_libraries(${SDLI_EXE} PRIVATE ${SDLI_LIB} sdli_base)

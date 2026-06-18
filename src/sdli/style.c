@@ -13,9 +13,12 @@ uint16_t FONT_ICON = 0;
 
 void LoadStyleSheet(void)
 {
-  FONT_NORMAL = v_add_font_mem(SDLI_TTF.data, SDLI_TTF.size);
-  FONT_BOLD = v_add_font_mem(SDLI_TTF_BOLD.data, SDLI_TTF_BOLD.size);
-  FONT_ICON = v_add_font_mem(SDLI_TTF_ICON.data, SDLI_TTF_ICON.size);
+  FONT_NORMAL =
+      v_add_font_mem(SDLI_TTF.data, SDLI_TTF.size, V_MEMORY_MODE_READONLY);
+  FONT_BOLD = v_add_font_mem(SDLI_TTF_BOLD.data, SDLI_TTF_BOLD.size,
+                             V_MEMORY_MODE_READONLY);
+  FONT_ICON = v_add_font_mem(SDLI_TTF_ICON.data, SDLI_TTF_ICON.size,
+                             V_MEMORY_MODE_READONLY);
 
   vss_with(S, CLS_ROOT)
   {

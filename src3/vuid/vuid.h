@@ -436,6 +436,12 @@ typedef struct VRenderData {
 // Context config
 // ============================================================
 
+/* Memory mode for handling external memory passed to vuid. */
+typedef enum VMemoryMode {
+  V_MEMORY_MODE_COPY, /* vuid immediately makes a copy of the memory */
+  V_MEMORY_MODE_READONLY, /* vuid will not write to this memory and vuid assumes this memory is valid for the duration of its use */
+} VMemoryMode;
+
 typedef enum VImageLoaderOp {
   V_IMAGE_LOADER_OP_LOAD,
   V_IMAGE_LOADER_OP_FREE,
@@ -476,7 +482,7 @@ VUID_API void         v_add_input_event(VInputEvent* event);
 // ============================================================
 
 VUID_API uint16_t     v_add_font(const char* path);
-VUID_API uint16_t     v_add_font_mem(const void* data, size_t size);
+VUID_API uint16_t     v_add_font_mem(const void* data, size_t size, VMemoryMode mode);
 VUID_API void         v_remove_font(uint16_t id);
 
 // ============================================================
@@ -484,7 +490,7 @@ VUID_API void         v_remove_font(uint16_t id);
 // ============================================================
 
 VUID_API bool         v_add_image(const char* src);
-VUID_API bool         v_add_image_mem(const char* src, const void* data, size_t size);
+VUID_API bool         v_add_image_mem(const char* src, const void* data, size_t size, VMemoryMode mode);
 VUID_API void         v_remove_image(const char* src);
 
 // ============================================================
