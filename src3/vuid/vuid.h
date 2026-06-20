@@ -378,15 +378,15 @@ typedef enum VTextureState {
 } VTextureState;
 
 typedef struct VTextureInfo {
-  uint32_t      id;               /* vuid-assigned opaque handle */
+  uint32_t      id;             /* vuid-assigned opaque handle */
   VTextureState state;
-  VPixelFormat  texture_format;   /* set at create; integration may use a compatible format */
-  uint32_t      width;            /* requested size on create; real GPU size when READY */
+  VPixelFormat  texture_format; /* set at create; integration may use a compatible format */
+  uint32_t      width;          /* requested size on create; real GPU size when READY */
   uint32_t      height;
-  VImageBuffer  pixels;           /* create: empty or must match w/h
-                                   * update: non-empty, dimensions must match texture w/h
-                                   * ready:  backing pixels retained for GPU restore */
-  void*         integration_data; /* integration stores its GPU texture handle here */
+  VImageBuffer  pixels;         /* create: empty or must match w/h
+                                 * update: non-empty, dimensions must match texture w/h
+                                 * ready:  backing pixels retained for GPU restore */
+  void*         idata;          /* integration stores its GPU texture handle here */
 } VTextureInfo;
 
 typedef struct VVertex {
@@ -421,7 +421,8 @@ typedef struct VCommand {
 } VCommand;
 
 typedef struct VRenderData {
-  void*            integration_data; /* integration stores its per-frame GPU state here */
+  void*            idata0; /* integration stores its platform/window data here */
+  void*            idata1; /* integration stores its surface/renderer data here */
   VTextureInfo*    textures;
   const VVertex*   vertices;
   const uint32_t*  indices;
@@ -481,9 +482,9 @@ VUID_API void         v_add_input_event(VInputEvent* event);
 // Text module
 // ============================================================
 
-VUID_API uint16_t     v_add_font(const char* path);
-VUID_API uint16_t     v_add_font_mem(const void* data, size_t size, VMemoryMode mode);
-VUID_API void         v_remove_font(uint16_t id);
+VUID_API bool         v_add_font(const char* name, const char* path);
+VUID_API bool         v_add_font_mem(const char* name, const void* data, size_t size, VMemoryMode mode);
+VUID_API void         v_remove_font(const char* name);
 
 // ============================================================
 // Image module
@@ -704,8 +705,8 @@ VUID_API uint16_t      vs_get_scrollbar_border_radius(const VStyle* style);
 VUID_API void          vs_unset_scrollbar_border_radius(VStyle* style);
 VUID_API bool          vs_has_scrollbar_border_radius(const VStyle* style);
 
-VUID_API void          vs_set_font(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_font(const VStyle* style);
+VUID_API void          vs_set_font(VStyle* style, const char* name);
+VUID_API const char*   vs_get_font(const VStyle* style);
 VUID_API void          vs_unset_font(VStyle* style);
 VUID_API bool          vs_has_font(const VStyle* style);
 

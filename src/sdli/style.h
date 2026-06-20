@@ -7,9 +7,9 @@
 // macros & constants
 //
 
-extern uint16_t FONT_NORMAL;
-extern uint16_t FONT_BOLD;
-extern uint16_t FONT_ICON;
+#define FONT_NORMAL "Font-Normal"
+#define FONT_BOLD "Font-Bold"
+#define FONT_ICON "Font-Icon"
 
 #define THEME_TEXT_FONT_SIZE (16)
 #define THEME_TEXT_FONT_SIZE_MD (18)

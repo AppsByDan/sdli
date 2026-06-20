@@ -5,7 +5,6 @@
 #if defined(__clang__)
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Wunused-function"
-    #pragma clang diagnostic ignored "-Wunused-internal-decl"
 #elif defined(__GNUC__) || defined(__GNUG__)
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wunused-function"
@@ -254,6 +253,10 @@ static inline bool v_cstr_is_empty(const char* str) {
   return !str || *str == '\0';
 }
 
+static inline bool v_cstr_eq(const char* a, const char* b) {
+  return strcmp(a ? a : "", b ? b : "") == 0;
+}
+
 /*
  * UTF-8 support.
  */
@@ -323,8 +326,8 @@ VUID_PKG bool v_utf8_get_codepoint(const uint8_t* utf8,
   VUID_PKG HMAP_TYPE##Result PREFIX##_put(HMAP_TYPE* self, VALUE_TYPE item); \
   VUID_PKG bool PREFIX##_remove_by_value(HMAP_TYPE* self,                    \
                                          const VALUE_TYPE* item);            \
-  VUID_PKG bool PREFIX##_remove(HMAP_TYPE* self, const KEY_TYPE* key);       \
-  VUID_PKG VALUE_TYPE* PREFIX##_get(const HMAP_TYPE* self, const KEY_TYPE* key)
+  VUID_PKG bool PREFIX##_remove(HMAP_TYPE* self, KEY_TYPE key);              \
+  VUID_PKG VALUE_TYPE* PREFIX##_get(const HMAP_TYPE* self, KEY_TYPE key)
 
 /* Implementation of hash map functions. */
 #define VUID_HMAP_IMPL(HMAP_TYPE, KEY_TYPE, VALUE_TYPE, PREFIX)                \
@@ -409,6 +412,7 @@ VUID_PKG bool v_utf8_get_codepoint(const uint8_t* utf8,
       return false;                                                            \
     }                                                                          \
                                                                                \
+    VUID_ASSERT(self->items || self->capacity == 0); /* clang-tidy :) */       \
     for (size_t i = 0; i < self->capacity; i++) {                              \
       if (self->metadata[i] != 0) {                                            \
         self->metadata[i] = 0;                                                 \
@@ -436,18 +440,23 @@ VUID_PKG bool v_utf8_get_codepoint(const uint8_t* utf8,
       }                                                                        \
     }                                                                          \
                                                                                \
+    VUID_ASSERT(self->items); /* clang-tidy :) */                              \
     const uint32_t item_hash = VALUE_TYPE##_get_hash(&item);                   \
     const size_t mask = self->capacity - 1;                                    \
     size_t i = item_hash & mask;                                               \
     uint8_t current_psl = 0;                                                   \
     VALUE_TYPE current_item = item;                                            \
+    size_t result_index = VUID_HMAP_NPOS;                                      \
                                                                                \
     for (;;) {                                                                 \
       if (self->metadata[i] == 0) {                                            \
         self->items[i] = current_item;                                         \
         self->metadata[i] = current_psl + 1;                                   \
         self->size++;                                                          \
-        return (HMAP_TYPE##Result){.ref = &self->items[i], .inserted = true};  \
+        if (result_index == VUID_HMAP_NPOS)                                    \
+          result_index = i;                                                    \
+        return (HMAP_TYPE##Result){.ref = &self->items[result_index],          \
+                                   .inserted = true};                          \
       }                                                                        \
                                                                                \
       const uint8_t slot_psl = self->metadata[i] - 1;                          \
@@ -459,6 +468,8 @@ VUID_PKG bool v_utf8_get_codepoint(const uint8_t* utf8,
                                                                                \
         self->items[i] = current_item;                                         \
         self->metadata[i] = current_psl + 1;                                   \
+        if (result_index == VUID_HMAP_NPOS)                                    \
+          result_index = i;                                                    \
                                                                                \
         current_item = tmp_item;                                               \
         current_psl = tmp_psl;                                                 \
@@ -535,10 +546,9 @@ VUID_PKG bool v_utf8_get_codepoint(const uint8_t* utf8,
     return PREFIX##_put_no_check(self, item);                                  \
   }                                                                            \
                                                                                \
-  VUID_PKG VALUE_TYPE* PREFIX##_get(const HMAP_TYPE* self,                     \
-                                    const KEY_TYPE* key) {                     \
+  VUID_PKG VALUE_TYPE* PREFIX##_get(const HMAP_TYPE* self, KEY_TYPE key) {     \
     const size_t index =                                                       \
-        PREFIX##_find_index(self, key, KEY_TYPE##_get_hash(key));              \
+        PREFIX##_find_index(self, &key, KEY_TYPE##_get_hash(&key));            \
                                                                                \
     return (index != VUID_HMAP_NPOS) ? &self->items[index] : NULL;             \
   }                                                                            \
@@ -553,19 +563,22 @@ VUID_PKG bool v_utf8_get_codepoint(const uint8_t* utf8,
       return false;                                                            \
     }                                                                          \
                                                                                \
+    VUID_ASSERT(self->items); /* clang-tidy :) */                              \
     VALUE_TYPE##_drop(&self->items[i]);                                        \
     PREFIX##_backshift_delete(self, i);                                        \
                                                                                \
     return true;                                                               \
   }                                                                            \
                                                                                \
-  VUID_PKG bool PREFIX##_remove(HMAP_TYPE* self, const KEY_TYPE* key) {        \
-    const size_t i = PREFIX##_find_index(self, key, KEY_TYPE##_get_hash(key)); \
+  VUID_PKG bool PREFIX##_remove(HMAP_TYPE* self, KEY_TYPE key) {               \
+    const size_t i =                                                           \
+        PREFIX##_find_index(self, &key, KEY_TYPE##_get_hash(&key));            \
                                                                                \
     if (i == VUID_HMAP_NPOS) {                                                 \
       return false;                                                            \
     }                                                                          \
                                                                                \
+    VUID_ASSERT(self->items); /* clang-tidy :) */                              \
     VALUE_TYPE##_drop(&self->items[i]);                                        \
     PREFIX##_backshift_delete(self, i);                                        \
                                                                                \
@@ -722,6 +735,10 @@ VUID_PKG uint8_t* v_file_read(VAllocator* alloc,
 
 
 
+#define VUID_MAX_STYLE_NAME_LENGTH 63
+#define VUID_MAX_NODE_ID_LENGTH 63
+#define VUID_MAX_FONT_NAME_LENGTH 63
+
 #define V_CHECK_CONTEXT(...)       \
   do {                             \
     if (!v_ctx_is_initialized()) { \
@@ -729,6 +746,7 @@ VUID_PKG uint8_t* v_file_read(VAllocator* alloc,
     }                              \
   } while (0)
 
+struct VStaticString;
 typedef struct VNodeModule VNodeModule;
 typedef struct VTextModule VTextModule;
 typedef struct VImageStore VImageStore;
@@ -750,6 +768,7 @@ VUID_PKG void         v_ctx_object_dec(VObjectType type);
 VUID_PKG VTextModule* v_ctx_text_module(void);
 VUID_PKG VNodeModule* v_ctx_node_module(void);
 VUID_PKG VImageStore* v_ctx_image_store(void);
+VUID_PKG bool         v_ctx_intern_string(const char* str, struct VStaticString* out);
 VUID_PKG uint32_t     v_ctx_create_texture(VPixelFormat format, const VImageBuffer* buffer);
 VUID_PKG void         v_ctx_destroy_texture(uint32_t texture_id);
 // clang-format on
@@ -917,6 +936,66 @@ VUID_PKG void v_command_queue_cmd_reset_clip(VCommandQueue* self);
 // clang-format on
 
 #endif  // VUID_CORE_COMMAND_QUEUE_H
+
+#ifndef VUID_CORE_STRING_POOL_H
+#define VUID_CORE_STRING_POOL_H
+
+
+typedef struct VStaticStringSetKey {
+  const char* str;
+  uint32_t str_hash;
+} VStaticStringSetKey;
+
+typedef struct VStaticString {
+  char* str;
+  uint32_t hash;
+  uint32_t size;
+} VStaticString;
+
+VUID_HMAP_DECLARE(VStaticStringSet,
+                  VStaticStringSetKey,
+                  VStaticString,
+                  v_static_string_set);
+
+/*
+ * Pool of interned strings.
+ * - Strings are case sensitive.
+ * - VStaticString objects can be held until string pool is dropped.
+ */
+typedef struct VStringPool {
+  VStaticStringSet strings;
+} VStringPool;
+
+/*
+ * Initialize the string pool with the given allocator.
+ * Returns true if initialization is successful, false otherwise.
+ */
+VUID_PKG bool v_string_pool_init(VStringPool* self,
+                                 VAllocator* allocator,
+                                 uint32_t initial_capacity);
+/*
+ * Release the resources associated with the string pool. All VStaticString
+ * objects obtained from this pool become invalid.
+ */
+VUID_PKG void v_string_pool_drop(VStringPool* self);
+/*
+ * Interns the given string in the string pool. If the string is already
+ * interned, returns the existing VStaticString. If allocation fails, returns
+ * false.
+ */
+VUID_PKG bool v_string_pool_intern(VStringPool* self,
+                                   const char* str,
+                                   VStaticString* out);
+
+static inline bool v_static_string_is_empty(const VStaticString* str) {
+  return str->size == 0;
+}
+
+static inline const char* v_static_string_to_str(const VStaticString* str) {
+  return str ? str->str : "";
+}
+
+#endif  // VUID_CORE_STRING_POOL_H
 
 #ifndef VUID_CORE_INSETS_H
 #define VUID_CORE_INSETS_H
@@ -1172,12 +1251,14 @@ VUID_PKG VFontFace* v_font_face_get_or_create(VTextEngine* text_engine,
 
 
 
+
 /*
  * Raw font data + backend-specific handle for a single loaded font.
  * Internal to the text module — not included by other modules.
  */
 struct VFontData {
   VAllocator* allocator;
+  VStaticString name;
   VBuffer file_buffer;
   VTextEngine* text_engine;
   VTextEngineFont font;
@@ -1195,7 +1276,8 @@ struct VFontData {
 VUID_PKG VFontData* v_font_data_new(VAllocator* allocator,
                                     VTextEngine* text_engine,
                                     VBuffer* file_buffer,
-                                    uint16_t font_id);
+                                    uint16_t font_id,
+                                    const char* name);
 
 /* Free all backend resources and the struct itself. */
 VUID_PKG void v_font_data_drop(VFontData* self);
@@ -1206,6 +1288,8 @@ VUID_PKG void v_font_data_drop(VFontData* self);
  * Returns false on failure.
  */
 VUID_PKG bool v_font_data_set_pixel_size(VFontData* self, uint16_t pixel_size);
+
+VUID_PKG bool v_font_data_is_legal_name(const char* name);
 
 #endif  // VUID_TEXT_FONT_DATA_H
 
@@ -1298,6 +1382,7 @@ struct VTextLayout {
 struct VTextModule {
   VAllocator* allocator;
   VTextEngine text_engine;
+  // TODO: why is this a pointer to VFontData*?
   VArray /* VFontData*[] */ font_data;
   // TODO: this could be addressed with an arena
   /* scratch buffers reused across layout calls */
@@ -1319,10 +1404,12 @@ VUID_PKG void v_text_module_drop(VTextModule* self);
 
 VUID_PKG void* v_text_module_get_hb_buffer(void);
 
-VUID_PKG uint16_t v_text_module_add_font(VTextModule* self,
-                                         VBuffer* file_buffer);
+VUID_PKG bool v_text_module_add_font(VTextModule* self,
+                                     const char* name,
+                                     VBuffer* file_buffer);
 
-VUID_PKG void v_text_module_remove_font(VTextModule* self, uint16_t id);
+VUID_PKG void v_text_module_remove_font(VTextModule* self, const char* name);
+
 /*
  * Create a laid-out VTextLayout for the given UTF-8 text and style.
  * wrap_width is used for line breaking (WRAP mode) and text alignment.
@@ -1353,6 +1440,12 @@ VUID_PKG void v_text_module_destroy_layout(VTextModule* self,
 /* Look up font data by font_id. Returns NULL if not found. */
 VUID_PKG VFontData* v_text_module_get_font_data(VTextModule* self,
                                                 uint16_t font_id);
+/* Look font by name. Returns NULL if not found.*/
+VUID_PKG VFontData* v_text_module_find_font_by_name(VTextModule* self,
+                                                    const char* font_name);
+/* Look font ID by name. Returns 0 if not found. */
+VUID_PKG uint16_t v_text_module_find_font_id_by_name(VTextModule* self,
+                                                     const char* font_name);
 
 VUID_PKG void v_text_module_maybe_rasterize_glyphs(VTextModule* self,
                                                    VTextLayout* layout);
@@ -1468,6 +1561,7 @@ VUID_PKG VSize v_text_layout_get_size(const VTextLayout* text_layout);
 
 
 
+
 typedef enum VStyleProperty {
   VS_WIDTH = 0,
   VS_HEIGHT,
@@ -1514,15 +1608,15 @@ typedef enum VStyleProperty {
 } VStyleProperty;
 
 typedef struct VStyleClass {
-  VStringInternal id;
+  VStaticString id;
   VStyle* style;
-  uint32_t id_hash;
   // TODO: move this flag into style
   bool is_ready;
 } VStyleClass;
 
 typedef struct VStyleClassHashMapKey {
   const char* id;
+  uint32_t hash;
 } VStyleClassHashMapKey;
 
 VUID_HMAP_DECLARE(VStyleClassHashMap,
@@ -1581,8 +1675,7 @@ struct VNode {
   uint32_t ref_count;
   uint32_t flags;
 
-  VStringInternal id;
-  uint32_t id_hash;
+  VStaticString id;
 
   struct VWeakRef* parent;
   VNode* first_child;
@@ -1678,6 +1771,7 @@ typedef enum VStylePropertyTag {
   VSTAG_SIZING,
   VSTAG_COLOR,
   VSTAG_UINT,
+  VSTAG_STRING,
   VSTAG_ENUM_DIRECTION,
   VSTAG_ENUM_WRAP,
   VSTAG_ENUM_XALIGN,
@@ -1710,6 +1804,7 @@ typedef struct VStylePropertyMeta {
     VAttachPointX attach_point_x;
     VAttachPointY attach_point_y;
     VPosition position;
+    const char* str;
   } default_value;
 
   union {
@@ -1727,6 +1822,7 @@ typedef struct VStylePropertyMeta {
     void (*attach_point_y)(VStyle*, VAttachPointY);
     void (*position)(VStyle*, VPosition);
     void (*text_wrap)(VStyle*, VTextWrap);
+    void (*str)(VStyle*, const char*);
   } set_fn;
 
   union {
@@ -1744,6 +1840,7 @@ typedef struct VStylePropertyMeta {
     VAttachPointY (*attach_point_y)(const VStyle*);
     VPosition (*position)(const VStyle*);
     VTextWrap (*text_wrap)(const VStyle*);
+    const char* (*str)(const VStyle*);
   } get_fn;
 
   bool affects_text_style;
@@ -1760,6 +1857,7 @@ VUID_PKG const VStylePropertyMeta* v_style_get_prop_meta(
 
 
 struct VStyle {
+  const char* font;
   VSizing width;
   VSizing height;
   VColor background;
@@ -1780,7 +1878,6 @@ struct VStyle {
   VAttachPointY attach_point_y;
   VOverflow overflow;
   VPosition position;
-  uint16_t font;
   uint16_t font_size;
   uint16_t gap;
   uint16_t padding_top;
@@ -2392,6 +2489,7 @@ VUID_PKG void v_stri_assign_vfmt(VStringInternal* self,
 
   if (n < 0) {
     // TODO: assert?
+    va_end(args2);
     return;
   }
 
@@ -2399,6 +2497,7 @@ VUID_PKG void v_stri_assign_vfmt(VStringInternal* self,
   char* buf = v_stri_reserve(self, allocator, len);
 
   if (!buf) {
+    va_end(args2);
     return;
   }
 
@@ -2493,6 +2592,7 @@ static uint32_t v_utf8_decode(uint32_t* state, uint32_t* codep, uint32_t byte) {
 
 
 
+
 typedef struct VContext VContext;
 
 static void v_pre_render(VContext* ctx);
@@ -2514,6 +2614,7 @@ struct VContext {
   VRenderData render_data;
   VArray /*<VTextureInfo[]>*/ textures;
   VCommandQueue command_queue;
+  VStringPool string_pool;   /* node id and style class interned strings */
   uint32_t next_texture_id;  /* starts at 1; 0 is the invalid sentinel */
   uint32_t atlas_texture_id; /* texture id for the glyph atlas */
   uint32_t atlas_last_modified_count;
@@ -2573,6 +2674,10 @@ VUID_API bool v_init(const VConfig* config) {
       .texture_count = (uint32_t)g_context.textures.size,
   };
 
+  if (!v_string_pool_init(&g_context.string_pool, allocator, 512)) {
+    goto error;
+  }
+
   if (!v_command_queue_init(&g_context.command_queue, allocator)) {
     goto error;
   }
@@ -2611,6 +2716,7 @@ VUID_API void v_quit(void) {
 
   v_array_drop(&g_context.input_event_queue);
   v_array_drop(&g_context.textures);
+  v_string_pool_drop(&g_context.string_pool);
   v_command_queue_drop(&g_context.command_queue);
 
   VUID_ASSERT(g_context.object_count[V_OBJECT_TYPE_NODE] == 0);
@@ -2639,13 +2745,18 @@ VUID_API VRenderData* v_get_render_data(void) {
   return &g_context.render_data;
 }
 
-VUID_API uint16_t v_add_font(const char* path) {
+VUID_API bool v_add_font(const char* name, const char* path) {
   V_CHECK_CONTEXT(0);
+
+  if (!v_font_data_is_legal_name(name) || v_cstr_is_empty(path)) {
+    return false;
+  }
+
   size_t size = 0;
   uint8_t* data = v_file_read(&g_context.allocator, path, &size);
 
   if (!data) {
-    return 0;
+    return false;
   }
 
   VBuffer file_buffer = {
@@ -2655,35 +2766,48 @@ VUID_API uint16_t v_add_font(const char* path) {
       .source = data,
   };
 
-  return v_text_module_add_font(&g_context.text_module, &file_buffer);
+  return v_text_module_add_font(&g_context.text_module, name, &file_buffer);
 }
 
-VUID_API uint16_t v_add_font_mem(const void* data,
-                                 size_t size,
-                                 VMemoryMode mode) {
+VUID_API bool v_add_font_mem(const char* name,
+                             const void* data,
+                             size_t size,
+                             VMemoryMode mode) {
   V_CHECK_CONTEXT(0);
+
+  if (!v_font_data_is_legal_name(name) || !data || size == 0) {
+    return false;
+  }
 
   VBuffer file_buffer;
 
   switch (mode) {
     case V_MEMORY_MODE_COPY:
       if (!v_buffer_from(&file_buffer, data, size, &g_context.allocator)) {
-        return 0;
+        return false;
       }
       break;
     case V_MEMORY_MODE_READONLY:
       file_buffer = v_buffer_init_static(data, size);
       break;
     default:
-      return 0;
+      return false;
   }
 
-  return v_text_module_add_font(&g_context.text_module, &file_buffer);
+  if (v_buffer_is_empty(&file_buffer)) {
+    return false;
+  }
+
+  return v_text_module_add_font(&g_context.text_module, name, &file_buffer);
 }
 
-VUID_API void v_remove_font(uint16_t id) {
+VUID_API void v_remove_font(const char* name) {
   V_CHECK_CONTEXT();
-  v_text_module_remove_font(&g_context.text_module, id);
+  if (v_cstr_is_empty(name)) {
+    return;
+  }
+
+  v_text_module_remove_font(&g_context.text_module, name);
 }
 
 VUID_API void v_process_events(void) {
@@ -2735,9 +2859,8 @@ VUID_API VNode* v_get_node_by_id(const char* id) {
     return NULL;
   }
 
-  const VNodeIdSetKey key = VNodeIdSetKey_init(id);
-  VNodeIdSetValue* value =
-      v_node_id_set_get(&g_context.node_module.nodes_by_id, &key);
+  VNodeIdSetValue* value = v_node_id_set_get(&g_context.node_module.nodes_by_id,
+                                             VNodeIdSetKey_init(id));
 
   return value ? value->node : NULL;
 }
@@ -2839,6 +2962,10 @@ VUID_PKG VNodeModule* v_ctx_node_module(void) {
 
 VUID_PKG VImageStore* v_ctx_image_store(void) {
   return &g_context.image_store;
+}
+
+VUID_PKG bool v_ctx_intern_string(const char* str, VStaticString* out) {
+  return v_string_pool_intern(&g_context.string_pool, str, out);
 }
 
 //
@@ -3544,6 +3671,98 @@ static void v_command_queue_cmd_render(VCommandQueue* self,
 
 
 
+VUID_PKG bool v_string_pool_init(VStringPool* self,
+                                 VAllocator* allocator,
+                                 uint32_t initial_capacity) {
+  self->strings =
+      v_static_string_set_init_with_capacity(allocator, initial_capacity);
+  return true;
+}
+
+VUID_PKG void v_string_pool_drop(VStringPool* self) {
+  v_static_string_set_drop(&self->strings);
+  *self = (VStringPool){0};
+}
+
+VUID_PKG bool v_string_pool_intern(VStringPool* self,
+                                   const char* str,
+                                   VStaticString* out) {
+  if (v_cstr_is_empty(str)) {
+    return false;
+  }
+
+  VStaticStringSetKey key = {.str = str, .str_hash = v_fnv1_hash(str)};
+  VStaticString* existing = v_static_string_set_get(&self->strings, key);
+
+  if (existing) {
+    *out = *existing;
+    return true;
+  }
+
+  // TODO: allocator should be passed in and also accessible to drop
+  VAllocator* allocator = v_ctx_allocator();
+  uint32_t size = (uint32_t)strlen(str);
+
+  // TODO: these should probably be pooled allocs
+  char* interned_str = v_alloc_raw(allocator, size + 1);
+
+  if (!interned_str) {
+    return false;
+  }
+
+  memcpy(interned_str, str, size);
+  interned_str[size] = '\0';
+
+  VStaticString value = {
+      .str = interned_str,
+      .hash = key.str_hash,
+      .size = size,
+  };
+  VStaticStringSetResult result =
+      v_static_string_set_put(&self->strings, value);
+
+  if (result.inserted) {
+    *out = *result.ref;
+  }
+
+  return result.inserted;
+}
+
+//
+// style class hash map implementation
+//
+
+static uint32_t VStaticStringSetKey_get_hash(const VStaticStringSetKey* key) {
+  return key->str_hash;
+}
+
+static uint32_t VStaticString_get_hash(const VStaticString* value) {
+  return value->hash;
+}
+
+static VStaticStringSetKey VStaticStringSetKey_from_value(
+    const VStaticString* value) {
+  return (VStaticStringSetKey){.str = value->str, .str_hash = value->hash};
+}
+
+static bool VStaticString_eq(const VStaticStringSetKey* key,
+                             const VStaticString* value) {
+  return strcmp(value->str, key->str) == 0;
+}
+
+static void VStaticString_drop(VStaticString* value) {
+  VAllocator* allocator = v_ctx_allocator();
+  v_free(allocator, value->str, value->size + 1);
+}
+
+VUID_HMAP_IMPL(VStaticStringSet,
+               VStaticStringSetKey,
+               VStaticString,
+               v_static_string_set)
+
+
+
+
 VUID_PKG VWeakRef* v_weak_ref_new(void* ref) {
   VWeakRef* weak_ref = v_ctx_new(VWeakRef);
   VUID_ASSERT(weak_ref);
@@ -3726,8 +3945,8 @@ VUID_PKG void v_image_store_release(VImageStore* self, VImage* image) {
       if (value->persist) {
         value->persist = false;
       } else {
-        v_image_hmap_remove(
-            &self->images, &(VImageHashMapKey){.src = v_stri_str(&image->src)});
+        v_image_hmap_remove(&self->images,
+                            (VImageHashMapKey){.src = v_stri_str(&image->src)});
       }
       v_image_unref(image);
     } else if (image->ref_count > 2) {
@@ -3740,7 +3959,7 @@ VUID_PKG void v_image_store_release(VImageStore* self, VImage* image) {
 
 VUID_PKG VImageHashMapValue* v_image_store_get(VImageStore* self,
                                                const char* src) {
-  return v_image_hmap_get(&self->images, &(VImageHashMapKey){.src = src});
+  return v_image_hmap_get(&self->images, (VImageHashMapKey){.src = src});
 }
 
 VUID_PKG VSize v_image_get_size(const VImage* image) {
@@ -4093,7 +4312,7 @@ VUID_PKG void v_text_layout_render(const VTextLayout* layout,
         .glyph_id = g->glyph_id,
         .packed_fp = ((uint32_t)layout->font_id << 16) | layout->pixel_size,
     };
-    const VAtlasCacheEntry* entry = v_atlas_cache_map_get(&atlas->cache, &key);
+    const VAtlasCacheEntry* entry = v_atlas_cache_map_get(&atlas->cache, key);
     if (!entry || entry->atlas_w == 0 || entry->atlas_h == 0) {
       continue;
     }
@@ -4130,27 +4349,16 @@ static inline hb_bool_t v_hb_font_has_color(hb_face_t* face) {
 
 VUID_PKG bool v_te_init(VTextEngine* self) {
   self->hb_buffer = hb_buffer_create();
-
   if (!self->hb_buffer) {
-    v_te_drop(self);
-    return false;
-  }
-
-  hb_raster_image_t* hb_image = hb_raster_image_create_or_fail();
-  if (!hb_image) {
     v_te_drop(self);
     return false;
   }
 
   self->hb_draw = hb_raster_draw_create_or_fail();
   if (!self->hb_draw) {
-    hb_raster_image_destroy(hb_image);
     v_te_drop(self);
     return false;
   }
-
-  // draw now owns image
-  hb_raster_draw_recycle_image(self->hb_draw, hb_image);
 
   return true;
 }
@@ -4377,9 +4585,11 @@ VUID_PKG bool v_te_shape(VTextEngine* self,
 VFontData* v_font_data_new(VAllocator* allocator,
                            VTextEngine* text_engine,
                            VBuffer* file_buffer,
-                           uint16_t font_id) {
+                           uint16_t font_id,
+                           const char* name) {
   VFontData* self = v_alloc_zero(allocator, sizeof(VFontData));
   if (!self) {
+    v_buffer_drop(file_buffer);
     return NULL;
   }
 
@@ -4388,6 +4598,11 @@ VFontData* v_font_data_new(VAllocator* allocator,
   self->file_buffer = *file_buffer;
   self->text_engine = text_engine;
   *file_buffer = (VBuffer){0};  // move
+
+  if (!v_ctx_intern_string(name, &self->name)) {
+    v_font_data_drop(self);
+    return NULL;
+  }
 
   if (!v_te_init_font(text_engine, &self->font, self->file_buffer.data,
                       self->file_buffer.size)) {
@@ -4418,6 +4633,10 @@ bool v_font_data_set_pixel_size(VFontData* self, uint16_t pixel_size) {
   } else {
     return false;
   }
+}
+
+VUID_PKG bool v_font_data_is_legal_name(const char* name) {
+  return !v_cstr_is_empty(name) && strlen(name) <= VUID_MAX_FONT_NAME_LENGTH;
 }
 
 #if defined(VUID_TEXT_ENGINE_STB)
@@ -4631,6 +4850,7 @@ VUID_PKG bool v_te_shape(VTextEngine* self,
 
 
 
+
 VUID_PKG bool v_text_module_init(VTextModule* self,
                                  VAllocator* allocator,
                                  uint32_t atlas_size,
@@ -4689,55 +4909,62 @@ VUID_PKG void* v_text_module_get_hb_buffer(void) {
 #endif
 }
 
-VUID_PKG uint16_t v_text_module_add_font(VTextModule* self,
-                                         VBuffer* file_buffer) {
-  if (v_buffer_is_empty(file_buffer)) {
-    return 0;
+VUID_PKG bool v_text_module_add_font(VTextModule* self,
+                                     const char* name,
+                                     VBuffer* file_buffer) {
+  if (v_text_module_find_font_by_name(self, name) != NULL) {
+    v_buffer_drop(file_buffer);
+    return false;
   }
 
   uint16_t font_id = self->next_font_id;
   VFontData* font_data = v_font_data_new(self->allocator, &self->text_engine,
-                                         file_buffer, font_id);
+                                         file_buffer, font_id, name);
 
   if (!font_data) {
-    return 0;
+    return false;
   }
 
   if (!v_array_push(&self->font_data, &font_data)) {
     v_font_data_drop(font_data);
-    return 0;
+    return false;
   }
 
   self->next_font_id++;
 
-  return font_id;
+  return true;
 }
 
-VUID_PKG void v_text_module_remove_font(VTextModule* self, uint16_t id) {
+VUID_PKG void v_text_module_remove_font(VTextModule* self, const char* name) {
+  VFontData* font = NULL;
+
   for (size_t i = 0; i < self->font_data.size; i++) {
     VFontData* data = v_array_get_ptr_unchecked(&self->font_data, i);
-    if (data->font_id != id) {
-      continue;
+    if (v_cstr_eq(data->name.str, name)) {
+      font = data;
+      // ok to remove the array entry, as this is an array of pointers
+      v_array_remove(&self->font_data, i);
+      break;
     }
+  }
 
-    // Rebuild the face cache, keeping only entries from other fonts.
-    VFontFaceMap new_cache = v_font_face_map_init(self->allocator);
-    for (size_t j = 0; j < self->font_face_cache.capacity; j++) {
-      if (self->font_face_cache.metadata[j] != 0) {
-        VFontFace* face = &self->font_face_cache.items[j];
-        if (face->font_id != id) {
-          v_font_face_map_put(&new_cache, *face);
-        }
-      }
-    }
-
-    v_font_face_map_drop(&self->font_face_cache);
-    self->font_face_cache = new_cache;
-
-    v_font_data_drop(data);
-    v_array_remove(&self->font_data, i);
+  if (!font) {
     return;
   }
+
+  // TODO: n^2. use a scratch buffer to get the matching faces, then delete
+  for (size_t j = 0; j < self->font_face_cache.capacity; j++) {
+    if (self->font_face_cache.metadata[j] != 0) {
+      VFontFace* face = &self->font_face_cache.items[j];
+      if (face->font_id == font->font_id) {
+        v_font_face_map_remove_by_value(&self->font_face_cache, face);
+        // reset the loop, backshift delete may have moved items around!
+        j = 0;
+      }
+    }
+  }
+
+  v_font_data_drop(font);
 }
 
 VUID_PKG VTextLayout* v_text_module_create_layout(VTextModule* self,
@@ -4813,6 +5040,23 @@ VUID_PKG VFontData* v_text_module_get_font_data(VTextModule* self,
   return NULL;
 }
 
+VUID_PKG VFontData* v_text_module_find_font_by_name(VTextModule* self,
+                                                    const char* font_name) {
+  for (size_t i = 0; i < self->font_data.size; i++) {
+    VFontData* data = v_array_get_ptr_unchecked(&self->font_data, i);
+    if (v_cstr_eq(data->name.str, font_name)) {
+      return data;
+    }
+  }
+  return NULL;
+}
+
+VUID_PKG uint16_t v_text_module_find_font_id_by_name(VTextModule* self,
+                                                     const char* font_name) {
+  VFontData* font_data = v_text_module_find_font_by_name(self, font_name);
+  return font_data ? font_data->font_id : 0;
+}
+
 VUID_PKG void v_text_module_maybe_rasterize_glyphs(VTextModule* self,
                                                    VTextLayout* layout) {
   VGlyphAtlas* glyph_atlas = &self->atlas;
@@ -4879,16 +5123,17 @@ VFontFace* v_font_face_get_or_create(VTextEngine* text_engine,
                                      VFontData* font_data,
                                      uint16_t pixel_size,
                                      uint32_t frame) {
+  // Always re-apply the pixel size so the FT face is at the right scale for
+  // shaping, which happens immediately after this call.
+  if (!v_font_data_set_pixel_size(font_data, pixel_size)) {
+    return NULL;
+  }
+
   VFontFaceKey key = {
       .packed = ((uint32_t)font_data->font_id << 16) | pixel_size,
   };
 
-  // Always re-apply the pixel size so the FT face is at the right scale for
-  // shaping, which happens immediately after this call.
-  if (!v_font_data_set_pixel_size(font_data, pixel_size))
-    return NULL;
-
-  VFontFace* cached = v_font_face_map_get(cache, &key);
+  VFontFace* cached = v_font_face_map_get(cache, key);
   if (cached) {
     cached->last_used_frame = frame;
     return cached;
@@ -5247,7 +5492,7 @@ VUID_PKG VAtlasCacheEntry* v_glyph_atlas_get_or_rasterize(
       .packed_fp = ((uint32_t)font_data->font_id << 16) | pixel_size,
   };
 
-  VAtlasCacheEntry* cached = v_atlas_cache_map_get(&self->cache, &key);
+  VAtlasCacheEntry* cached = v_atlas_cache_map_get(&self->cache, key);
   if (cached) {
     cached->last_used_frame = frame;
     return cached;
@@ -5780,10 +6025,10 @@ static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
       .get_fn.uint = &vs_get_border_radius,
     },
     [VS_FONT] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_font,
-      .get_fn.uint = &vs_get_font,
+      .tag = VSTAG_STRING,
+      .default_value.str = "",
+      .set_fn.str = &vs_set_font,
+      .get_fn.str = &vs_get_font,
       .affects_text_style = true,
     },
     [VS_FONT_SIZE] = {
@@ -5948,7 +6193,7 @@ VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_RIGHT, border_right, uint16_t, VUID_EQ, u
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_BOTTOM, border_bottom, uint16_t, VUID_EQ, uint)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_LEFT, border_left, uint16_t, VUID_EQ, uint)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_RADIUS, border_radius, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_FONT, font, uint16_t, VUID_EQ, uint)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_FONT, font, const char*, v_cstr_eq, str)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_FONT_SIZE, font_size, uint16_t, VUID_EQ, uint)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_SCROLLBAR_WIDTH, scrollbar_width, uint16_t, VUID_EQ, uint)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_SCROLLBAR_BORDER_RADIUS, scrollbar_border_radius, uint16_t, VUID_EQ, uint)
@@ -6053,10 +6298,16 @@ VUID_API float v_style_measure_text_w(const VStyle* style, const char* text) {
   }
 
   // TODO: this measure is heavy.. can we measure without an alloc?
-
-  const uint16_t font_id = vs_get_font(style);
-  const uint16_t font_size = vs_get_font_size(style);
   VTextModule* text_module = v_ctx_text_module();
+  const uint16_t font_id =
+      v_text_module_find_font_id_by_name(text_module, vs_get_font(style));
+
+  if (!font_id) {
+    return 0.f;
+  }
+
+  const uint16_t font_size = vs_get_font_size(style);
+
   VTextLayout* layout = v_text_module_create_layout_z(
       text_module, font_id, font_size, text, strlen(text), V_TEXT_WRAP_NO_WRAP,
       V_ALIGN_X_LEFT, 0.f);
@@ -6107,6 +6358,9 @@ VUID_PKG void v_style_flatten(VStyle* a, VStyle* b) {
       case VSTAG_UINT:
         meta->set_fn.uint(a, meta->get_fn.uint(b));
         break;
+      case VSTAG_STRING:
+        meta->set_fn.str(a, meta->get_fn.str(b));
+        break;
       case VSTAG_ENUM_DIRECTION:
         meta->set_fn.direction(a, meta->get_fn.direction(b));
         break;
@@ -6155,20 +6409,21 @@ VUID_PKG bool v_style_class_init(VStyleClass* self, const char* id) {
   }
 
   *self = (VStyleClass){
-      .id_hash = v_fnv1_hash(id),
       .is_ready = false,
       .style = style,
   };
 
-  // TODO: this can fail!
-  v_stri_assign(&self->id, v_ctx_allocator(), id);
+  bool result = v_ctx_intern_string(id, &self->id);
 
-  return true;
+  if (!result) {
+    v_style_unref(style);
+  }
+
+  return result;
 }
 
 VUID_PKG void v_style_class_drop(VStyleClass* self) {
   v_style_unref(self->style);
-  v_stri_drop(&self->id, v_ctx_allocator());
 }
 
 VUID_PKG bool v_style_class_is_valid_name(const char* name) {
@@ -6176,6 +6431,7 @@ VUID_PKG bool v_style_class_is_valid_name(const char* name) {
     return false;
   }
 
+  size_t len = 1;
   name++;
 
   while (*name) {
@@ -6186,6 +6442,11 @@ VUID_PKG bool v_style_class_is_valid_name(const char* name) {
     }
 
     name++;
+    len++;
+
+    if (len > VUID_MAX_STYLE_NAME_LENGTH) {
+      return false;
+    }
   }
 
   return true;
@@ -6232,10 +6493,16 @@ static VSize v__compute_text_pref_size(VNode* node, const VStyle* node_style) {
     v_text_module_destroy_layout(text_module, text_layout);
   }
 
+  uint16_t font_id =
+      v_text_module_find_font_id_by_name(text_module, vs_get_font(node_style));
+
+  if (!font_id) {
+    return (VSize){0, 0};
+  }
+
   text_layout = v_text_module_create_layout(
-      text_module, vs_get_font(node_style), vs_get_font_size(node_style),
-      &node->res_data.text, V_TEXT_WRAP_NO_WRAP, vs_get_talign(node_style),
-      0.0f);
+      text_module, font_id, vs_get_font_size(node_style), &node->res_data.text,
+      V_TEXT_WRAP_NO_WRAP, vs_get_talign(node_style), 0.0f);
 
   v_node_set_text_layout(node, text_layout);
 
@@ -6546,10 +6813,14 @@ static void v_layout_pass3_height(VNode* node) {
             v_text_module_destroy_layout(text_module, text_layout);
           }
 
+          // TODO: this should be resolved
+          uint16_t font_id = v_text_module_find_font_id_by_name(
+              text_module, vs_get_font(style_for_text));
+
           text_layout = v_text_module_create_layout(
-              text_module, vs_get_font(style_for_text),
-              vs_get_font_size(style_for_text), &node->res_data.text,
-              V_TEXT_WRAP_WRAP, vs_get_talign(style_for_text), inner_w);
+              text_module, font_id, vs_get_font_size(style_for_text),
+              &node->res_data.text, V_TEXT_WRAP_WRAP,
+              vs_get_talign(style_for_text), inner_w);
 
           if (text_layout) {
             VSize size = v_text_layout_get_size(text_layout);
@@ -6893,7 +7164,8 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
         // Flush the completed row: assign its height to every member.
         float ch;
         for (VNode* c = row_start; c != child; c = v_node_next_sibling(c)) {
-          if (!v_node_is_visible(c) || c->popover_type != V_POPOVER_NONE) {
+          if (!c || !v_node_is_visible(c) ||
+              v_node_popover(c) != V_POPOVER_NONE) {
             continue;
           }
 
@@ -7408,7 +7680,7 @@ VUID_PKG void v_node_module_remove_input_node(VNode* node) {
 }
 
 static uint32_t VNodeIdSetValue_get_hash(const VNodeIdSetValue* value) {
-  return value->node->id_hash;
+  return value->node->id.hash;
 }
 
 static uint32_t VNodeIdSetKey_get_hash(const VNodeIdSetKey* key) {
@@ -7416,12 +7688,12 @@ static uint32_t VNodeIdSetKey_get_hash(const VNodeIdSetKey* key) {
 }
 
 static VNodeIdSetKey VNodeIdSetKey_from_value(const VNodeIdSetValue* value) {
-  return (VNodeIdSetKey){.id = v_stri_str(&value->node->id)};
+  return (VNodeIdSetKey){.id = value->node->id.str};
 }
 
 static bool VNodeIdSetValue_eq(const VNodeIdSetKey* key,
                                const VNodeIdSetValue* value) {
-  return v_stri_eq_cstr(&value->node->id, key->id);
+  return strcmp(key->id, value->node->id.str) == 0;
 }
 
 // nodes are unowned, so we don't drop them when removing from the set
@@ -7795,32 +8067,26 @@ static VNode* v_node_hit_test_recursive(VNode* node,
 
 
 
+static VStyleClassHashMapKey v_style_sheet_make_key(const char* name) {
+  return (VStyleClassHashMapKey){.id = name, .hash = v_fnv1_hash(name)};
+}
+
 VUID_API VStyle* vss_get_class(const char* name) {
   V_CHECK_CONTEXT(NULL);
-
   if (v_cstr_is_empty(name)) {
     return NULL;
   }
 
   VStyleClassHashMap* style_sheet = v_node_module_get_style_sheet();
   VStyleClass* style_class =
-      v_style_class_hmap_get(style_sheet, &(VStyleClassHashMapKey){name});
+      v_style_class_hmap_get(style_sheet, v_style_sheet_make_key(name));
 
   return (style_class && style_class->is_ready) ? style_class->style : NULL;
 }
 
 VUID_API bool vss_has_class(const char* name) {
   V_CHECK_CONTEXT(false);
-
-  if (v_cstr_is_empty(name)) {
-    return false;
-  }
-
-  VStyleClassHashMap* style_sheet = v_node_module_get_style_sheet();
-
-  // TODO: check ready?
-  return v_style_class_hmap_get(style_sheet, &(VStyleClassHashMapKey){name}) !=
-         NULL;
+  return vss_get_class(name) != NULL;
 }
 
 VUID_API bool vss_remove_class(const char* name) {
@@ -7832,7 +8098,7 @@ VUID_API bool vss_remove_class(const char* name) {
 
   VStyleClassHashMap* style_sheet = v_node_module_get_style_sheet();
 
-  return v_style_class_hmap_remove(style_sheet, &(VStyleClassHashMapKey){name});
+  return v_style_class_hmap_remove(style_sheet, v_style_sheet_make_key(name));
 }
 
 VUID_API VStyle* vss__start_class(const char* name, const char* base) {
@@ -7844,7 +8110,7 @@ VUID_API VStyle* vss__start_class(const char* name, const char* base) {
 
   VStyleClassHashMap* style_sheet = v_node_module_get_style_sheet();
   VStyleClass* existing_class =
-      v_style_class_hmap_get(style_sheet, &(VStyleClassHashMapKey){name});
+      v_style_class_hmap_get(style_sheet, v_style_sheet_make_key(name));
   VStyle* style;
 
   if (existing_class) {
@@ -7886,7 +8152,7 @@ VUID_API void vss__end_class(const char* name) {
 
   VStyleClassHashMap* style_sheet = v_node_module_get_style_sheet();
   VStyleClass* style_class =
-      v_style_class_hmap_get(style_sheet, &(VStyleClassHashMapKey){name});
+      v_style_class_hmap_get(style_sheet, v_style_sheet_make_key(name));
 
   if (style_class) {
     style_class->is_ready = true;
@@ -7898,22 +8164,22 @@ VUID_API void vss__end_class(const char* name) {
 //
 
 static uint32_t VStyleClass_get_hash(const VStyleClass* value) {
-  return value->id_hash;
+  return value->id.hash;
 }
 
 static uint32_t VStyleClassHashMapKey_get_hash(
     const VStyleClassHashMapKey* key) {
-  return v_fnv1_hash(key->id);
+  return key->hash;
 }
 
 static VStyleClassHashMapKey VStyleClassHashMapKey_from_value(
     const VStyleClass* value) {
-  return (VStyleClassHashMapKey){.id = v_stri_str(&value->id)};
+  return (VStyleClassHashMapKey){.id = value->id.str, .hash = value->id.hash};
 }
 
 static bool VStyleClass_eq(const VStyleClassHashMapKey* key,
                            const VStyleClass* value) {
-  return v_stri_eq_cstr(&value->id, key->id);
+  return strcmp(value->id.str, key->id) == 0;
 }
 
 #define VStyleClass_drop v_style_class_drop
@@ -8234,62 +8500,54 @@ VUID_API VNode* v_node_new_cfg(VNodeTag tag, const VNodeConfig* config) {
 }
 
 VUID_API const char* v_node_id(const VNode* node) {
-  return node ? v_stri_str(&node->id) : "";
+  return node && !v_static_string_is_empty(&node->id) ? node->id.str : "";
 }
 
 VUID_API void v_node_set_id(VNode* node, const char* id) {
-  // TODO: review (confusing code)
-  if (id == NULL) {
-    id = "";
-  }
-
-  if (!node || v_stri_eq_cstr(&node->id, id) || !v_node__is_legal_id(id)) {
+  if (!node || v_cstr_eq(node->id.str, id)) {
     return;
   }
 
   const bool attached = v_node_has_flag(node, V_NODEFLAG_ATTACHED);
 
-  if (attached && !v_stri_is_empty(&node->id)) {
-    v_node_module_remove_node_id(node);
-  }
+  if (v_cstr_is_empty(id)) {
+    if (attached) {
+      v_node_module_remove_node_id(node);
+    }
 
-  v_stri_assign(&node->id, v_ctx_allocator(), id);
-  node->id_hash = v_fnv1_hash(v_stri_str(&node->id));
+    node->id = (VStaticString){0};
+  } else if (v_node__is_legal_id(id)) {
+    if (attached && !v_static_string_is_empty(&node->id)) {
+      v_node_module_remove_node_id(node);
+    }
 
-  if (attached && !v_stri_is_empty(&node->id)) {
-    v_node_module_add_node_id(node);
+    if (!v_ctx_intern_string(id, &node->id)) {
+      return;
+    }
+
+    if (attached) {
+      v_node_module_add_node_id(node);
+    }
+  } else {
+    // illegal id, do nothing
   }
 }
 
 VUID_API void v_node_set_id_fmt(VNode* node, const char* fmt, ...) {
-  // TODO: review (confusing code)
-  if (!node) {
-    return;
-  }
-
-  const bool attached = v_node_has_flag(node, V_NODEFLAG_ATTACHED);
-
-  if (attached && !v_stri_is_empty(&node->id)) {
-    v_node_module_remove_node_id(node);
-  }
-
-  // assign directly to VNodeId to avoid extra allocs
   va_list args;
+  // TODO: use a scratch buffer. max node id is small, so stack is ok
+  char buf[VUID_MAX_NODE_ID_LENGTH + 1];
+  int n;
+
   va_start(args, fmt);
-  v_stri_assign_vfmt(&node->id, v_ctx_allocator(), fmt, args);
-  node->id_hash = v_fnv1_hash(v_stri_str(&node->id));
+  n = vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
 
-  // original id is gone.. clear the id as a fallback
-  if (!v_node__is_legal_id(v_stri_str(&node->id))) {
-    v_stri_clear(&node->id);
-    node->id_hash = v_fnv1_hash(v_stri_str(&node->id));
+  if (n < 0 || n > VUID_MAX_NODE_ID_LENGTH) {
     return;
   }
 
-  if (attached && !v_stri_is_empty(&node->id)) {
-    v_node_module_add_node_id(node);
-  }
+  v_node_set_id(node, buf);
 }
 
 VUID_API VNodeTag v_node_tag(const VNode* node) {
@@ -8826,7 +9084,7 @@ VUID_PKG void v_node_set_text_layout(VNode* node, VTextLayout* layout) {
 VUID_PKG void v_node_set_attached(VNode* node, bool attached) {
   if (attached) {
     v_node_set_flag(node, V_NODEFLAG_ATTACHED);
-    if (!v_stri_is_empty(&node->id)) {
+    if (!v_static_string_is_empty(&node->id)) {
       v_node_module_add_node_id(node);
     }
   } else {
@@ -8835,7 +9093,7 @@ VUID_PKG void v_node_set_attached(VNode* node, bool attached) {
       v_node_hide_popover(node);
     }
     v_node_clear_flag(node, V_NODEFLAG_ATTACHED);
-    if (!v_stri_is_empty(&node->id)) {
+    if (!v_static_string_is_empty(&node->id)) {
       v_node_module_remove_node_id(node);
     }
   }
@@ -8972,8 +9230,6 @@ static void v_node_destructor(VNode* node) {
     }
   }
 
-  v_stri_drop(&node->id, allocator);
-
   // release style and clear unowned reference to us
   if (node->style) {
     v_style_set_owner(node->style, NULL);
@@ -9010,6 +9266,8 @@ static bool v_node__is_legal_id(const char* id) {
     return false;
   }
 
+  size_t len = 1;
+
   id++;
 
   while (*id) {
@@ -9017,6 +9275,12 @@ static bool v_node__is_legal_id(const char* id) {
 
     if (!(v_char_is_alpha(c) || v_char_is_digit(c) || c == '_' || c == '-' ||
           c == '.' || c == ':')) {
+      return false;
+    }
+
+    len++;
+
+    if (len > VUID_MAX_NODE_ID_LENGTH) {
       return false;
     }
   }

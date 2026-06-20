@@ -8,6 +8,7 @@
 #include <stc/common.h>
 
 #include <vuid_sdl3.h>
+#include <vuid_sdl3_renderer.h>
 
 //
 // private types
@@ -111,8 +112,13 @@ bool App_Init(void)
     goto error;
   }
 
-  if (!v_sdl3_init(g_app.renderer)) {
+  if (!v_sdl3_init()) {
     SLog("ERROR: v_sdl3_init() failed");
+    goto error;
+  }
+
+  if (!v_sdl3_renderer_init(g_app.renderer)) {
+    SLog("ERROR: v_sdl3_renderer_init() failed");
     goto error;
   }
 
@@ -132,6 +138,7 @@ void App_Shutdown(void)
 {
   SLog("%s", FN_NAME);
 
+  v_sdl3_renderer_shutdown();
   v_sdl3_shutdown();
   v_quit();
 
@@ -188,7 +195,7 @@ void App_Present(void)
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
   SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
   SDL_RenderClear(renderer);
-  v_sdl3_render();
+  v_sdl3_renderer_render();
 
   SDL_RenderPresent(renderer);
 }

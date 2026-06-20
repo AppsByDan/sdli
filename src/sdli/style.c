@@ -3,22 +3,18 @@
 #include <sdli/assets.h>
 #include <sdli/util.h>
 
-uint16_t FONT_NORMAL = 0;
-uint16_t FONT_BOLD = 0;
-uint16_t FONT_ICON = 0;
-
 //
 // public function implementation
 //
 
 void LoadStyleSheet(void)
 {
-  FONT_NORMAL =
-      v_add_font_mem(SDLI_TTF.data, SDLI_TTF.size, V_MEMORY_MODE_READONLY);
-  FONT_BOLD = v_add_font_mem(SDLI_TTF_BOLD.data, SDLI_TTF_BOLD.size,
-                             V_MEMORY_MODE_READONLY);
-  FONT_ICON = v_add_font_mem(SDLI_TTF_ICON.data, SDLI_TTF_ICON.size,
-                             V_MEMORY_MODE_READONLY);
+  v_add_font_mem(FONT_NORMAL, SDLI_TTF.data, SDLI_TTF.size,
+                 V_MEMORY_MODE_READONLY);
+  v_add_font_mem(FONT_BOLD, SDLI_TTF_BOLD.data, SDLI_TTF_BOLD.size,
+                 V_MEMORY_MODE_READONLY);
+  v_add_font_mem(FONT_ICON, SDLI_TTF_ICON.data, SDLI_TTF_ICON.size,
+                 V_MEMORY_MODE_READONLY);
 
   vss_with(S, CLS_ROOT)
   {

@@ -103,6 +103,7 @@ add_library(${SDLI_LIB}
   "src/sdli/widget/state.c"
   "src3/vuid/vuid.c"
   "src3/vuid/vuid_sdl3.c"
+  "src3/vuid/vuid_sdl3_renderer.c"
 )
 
 target_link_libraries(${SDLI_LIB} PUBLIC

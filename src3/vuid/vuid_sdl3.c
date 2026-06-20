@@ -6,59 +6,15 @@
 static uint32_t v_sdl3_map_modifier(int raw_modifiers);
 static VKey v_sdl3_map_key(SDL_Keycode keycode, SDL_Scancode scancode);
 static VMouseButton v_sdl3_map_mouse_button(int button);
-static bool v_sdl3_upload_texture(SDL_Texture* texture,
-                                  const VImageBuffer* pixels);
-static bool v_sdl3_check_update_rect(const VTextureInfo* info);
-static SDL_Texture* v_sdl3_create_texture(SDL_Renderer* renderer,
-                                          const VTextureInfo* info);
-static const SDL_FColor* v_sdl3_to_color_array(VSDL3RenderData* render_data,
-                                               const VVertex* vertices,
-                                               uint32_t vertex_count);
 
-bool v_sdl3_init(SDL_Renderer* renderer) {
-  // TODO: use allocator from vuid
-  VSDL3RenderData* render_data = SDL_calloc(1, sizeof(VSDL3RenderData));
-
-  if (!render_data) {
-    return false;
-  }
-
-  render_data->renderer = renderer;
-
-  VRenderData* rm = v_get_render_data();
-
-  rm->integration_data = render_data;
-
+bool v_sdl3_init(void) {
   return true;
 }
 
-void v_sdl3_shutdown(void) {
-  VRenderData* rm = v_get_render_data();
-
-  for (uint32_t i = 0; i < rm->texture_count; i++) {
-    VTextureInfo* info = &rm->textures[i];
-    if (info->integration_data) {
-      SDL_DestroyTexture((SDL_Texture*)info->integration_data);
-      info->integration_data = NULL;
-    }
-    info->state = V_TEXTURE_DESTROYED;
-  }
-
-  VSDL3RenderData* render_data = rm->integration_data;
-
-  if (render_data) {
-    SDL_free(render_data->color_buffer);
-    SDL_free(render_data);
-    rm->integration_data = NULL;
-  }
-}
+void v_sdl3_shutdown(void) {}
 
 void v_sdl3_process_event(SDL_Event* event) {
   VInputEvent ie = {0};
-  VSDL3RenderData* render_data = v_get_render_data()->integration_data;
-  SDL_Renderer* renderer = render_data->renderer;
-
-  SDL_ConvertEventToRenderCoordinates(renderer, (SDL_Event*)event);
 
   switch (event->type) {
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -123,114 +79,6 @@ void v_sdl3_process_event(SDL_Event* event) {
   v_add_input_event(&ie);
 }
 
-void v_sdl3_render(void) {
-  VRenderData* rm = v_get_render_data();
-  VSDL3RenderData* integration = rm->integration_data;
-  SDL_Renderer* renderer = integration->renderer;
-
-  for (uint32_t i = 0; i < rm->texture_count; i++) {
-    VTextureInfo* info = &rm->textures[i];
-
-    switch (info->state) {
-      case V_TEXTURE_CREATING: {
-        if (info->integration_data) {
-          SDL_DestroyTexture(info->integration_data);
-          info->integration_data = NULL;
-        }
-
-        SDL_Texture* tex = v_sdl3_check_update_rect(info)
-                               ? v_sdl3_create_texture(renderer, info)
-                               : NULL;
-
-        if (tex) {
-          if (v_sdl3_upload_texture(tex, &info->pixels)) {
-            info->integration_data = tex;
-            info->state = V_TEXTURE_READY;
-          } else {
-            SDL_DestroyTexture(tex);
-          }
-        }
-        break;
-      }
-      case V_TEXTURE_UPDATING: {
-        SDL_Texture* tex = info->integration_data;
-
-        if (tex && v_sdl3_check_update_rect(info)) {
-          if (v_sdl3_upload_texture(tex, &info->pixels)) {
-            info->state = V_TEXTURE_READY;
-          }
-        }
-        break;
-      }
-      case V_TEXTURE_DESTROYING:
-        if (info->integration_data) {
-          SDL_DestroyTexture(info->integration_data);
-          info->integration_data = NULL;
-        }
-        break;
-      default:
-        break;
-    }
-  }
-
-  for (uint32_t i = 0; i < rm->command_count; i++) {
-    const VCommand* cmd = &rm->commands[i];
-    switch (cmd->type) {
-      case V_COMMAND_SET_CLIP: {
-        if (cmd->u.set_clip.clear) {
-          SDL_SetRenderClipRect(renderer, NULL);
-        } else {
-          SDL_Rect clip_rect = {
-              .x = cmd->u.set_clip.x,
-              .y = cmd->u.set_clip.y,
-              .w = cmd->u.set_clip.w,
-              .h = cmd->u.set_clip.h,
-          };
-          SDL_SetRenderClipRect(renderer, &clip_rect);
-        }
-        break;
-      }
-      case V_COMMAND_RENDER: {
-        const VVertex* start_vertex =
-            &rm->vertices[cmd->u.render.vertex_offset];
-        const int* indices =
-            (const int*)&rm->indices[cmd->u.render.index_offset];
-        const int stride = (int)sizeof(VVertex);
-        const SDL_FColor* color = v_sdl3_to_color_array(
-            integration, start_vertex, cmd->u.render.vertex_count);
-        SDL_Texture* texture = NULL;
-
-        if (cmd->u.render.texture_id != 0) {
-          for (uint32_t i = 0; i < rm->texture_count; i++) {
-            if (rm->textures[i].id == cmd->u.render.texture_id) {
-              texture = rm->textures[i].integration_data;
-              break;
-            }
-          }
-        }
-
-        SDL_RenderGeometryRaw(
-            renderer,                    // renderer
-            texture,                     // texture (NULL for solid rect)
-            &start_vertex->x,            // xy pointer
-            stride,                      // xy stride
-            color,                       // color pointer
-            (int)sizeof(SDL_FColor),     // color stride
-            &start_vertex->u,            // uv pointer
-            stride,                      // uv stride
-            cmd->u.render.vertex_count,  // num_vertices
-            indices,                     // indices pointer
-            cmd->u.render.index_count,   // num_indices
-            (int)sizeof(rm->indices[0])  // size of each index (4 bytes)
-        );
-        break;
-      }
-      default:
-        break;
-    }
-  }
-}
-
 bool v_sdl3_image_loader(VImageLoaderOp op,
                          VImageBuffer* buffer,
                          const void* file_data,
@@ -280,106 +128,6 @@ bool v_sdl3_image_loader(VImageLoaderOp op,
   }
 
   return true;
-}
-
-static bool v_sdl3_upload_texture(SDL_Texture* texture,
-                                  const VImageBuffer* pixels) {
-  Uint32* dest_pixels;
-  int dest_pitch;
-
-  if (!SDL_LockTexture(texture, NULL, (void**)&dest_pixels, &dest_pitch)) {
-    SDL_Log("v_sdl3_upload_texture: SDL_LockTexture failed: %s\n",
-            SDL_GetError());
-    return false;
-  }
-
-  bool result = true;
-  SDL_PixelFormat texture_format = SDL_GetNumberProperty(
-      SDL_GetTextureProperties(texture), SDL_PROP_TEXTURE_FORMAT_NUMBER,
-      SDL_PIXELFORMAT_UNKNOWN);
-
-  if (pixels->format == V_PIXEL_FORMAT_A8) {
-    const uint32_t pitch_u32 = (uint32_t)(dest_pitch / 4);
-    const SDL_PixelFormatDetails* texture_format_details =
-        SDL_GetPixelFormatDetails(texture_format);
-
-    uint32_t src_row_bytes = pixels->pitch > 0 ? pixels->pitch : pixels->width;
-    for (uint32_t y = 0; y < pixels->height; y++) {
-      const uint8_t* src_row = pixels->bytes + y * src_row_bytes;
-      Uint32* dst_row = dest_pixels + y * pitch_u32;
-      for (uint32_t x = 0; x < pixels->width; x++) {
-        dst_row[x] = SDL_MapRGBA(texture_format_details, NULL, 255, 255, 255,
-                                 src_row[x]);
-      }
-    }
-  } else if (pixels->format == V_PIXEL_FORMAT_RGBA8) {
-    SDL_ConvertPixels((int)pixels->width, (int)pixels->height,
-                      SDL_PIXELFORMAT_RGBA32, pixels->bytes, (int)pixels->pitch,
-                      texture_format, dest_pixels, dest_pitch);
-  } else {
-    result = false;
-  }
-
-  SDL_UnlockTexture(texture);
-  return result;
-}
-
-static bool v_sdl3_check_update_rect(const VTextureInfo* info) {
-  if (!info->pixels.bytes) {
-    return false;
-  }
-
-  if (info->pixels.format != V_PIXEL_FORMAT_A8 &&
-      info->pixels.format != V_PIXEL_FORMAT_RGBA8) {
-    return false;
-  }
-
-  if (info->pixels.width == 0 || info->pixels.height == 0) {
-    return false;
-  }
-
-  return info->pixels.width == info->width &&
-         info->pixels.height == info->height;
-}
-
-static SDL_Texture* v_sdl3_create_texture(SDL_Renderer* renderer,
-                                          const VTextureInfo* info) {
-  SDL_Texture* tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32,
-                                       SDL_TEXTUREACCESS_STREAMING,
-                                       (int)info->width, (int)info->height);
-
-  if (tex) {
-    // TODO: this should be a state change with render commands
-    SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
-  } else {
-    // TODO: use vuid to log
-    SDL_Log("v_sdl3_render: SDL_CreateTexture failed: %s\n", SDL_GetError());
-  }
-
-  return tex;
-}
-
-static const SDL_FColor* v_sdl3_to_color_array(VSDL3RenderData* render_data,
-                                               const VVertex* vertices,
-                                               uint32_t vertex_count) {
-  if (render_data->color_buffer_capacity < vertex_count) {
-    const uint32_t new_capacity = render_data->color_buffer_capacity == 0
-                                      ? 256
-                                      : render_data->color_buffer_capacity * 2;
-    // TODO: use allocator from vuid
-    render_data->color_buffer = SDL_realloc(render_data->color_buffer,
-                                            new_capacity * sizeof(SDL_FColor));
-    render_data->color_buffer_capacity = new_capacity;
-  }
-
-  for (uint32_t i = 0; i < vertex_count; i++) {
-    render_data->color_buffer[i].r = vertices[i].r / 255.0f;
-    render_data->color_buffer[i].g = vertices[i].g / 255.0f;
-    render_data->color_buffer[i].b = vertices[i].b / 255.0f;
-    render_data->color_buffer[i].a = vertices[i].a / 255.0f;
-  }
-
-  return render_data->color_buffer;
 }
 
 static VMouseButton v_sdl3_map_mouse_button(int button) {
