@@ -11,27 +11,33 @@ static bool v_sdl3_upload_texture(SDL_Texture* texture,
 static bool v_sdl3_check_update_rect(const VTextureInfo* info);
 static SDL_Texture* v_sdl3_create_texture(SDL_Renderer* renderer,
                                           const VTextureInfo* info);
-static const SDL_FColor* v_sdl3_to_color_array(VSDL3RendererState* state,
-                                               const VVertex* vertices,
-                                               uint32_t vertex_count);
+static void v_sdl3_renderer_sync_textures(SDL_Renderer* renderer,
+                                          VRenderData* render_data);
+static const SDL_FColor* v_sdl3_renderer_resolve_color(
+    VSDL3RendererState* state,
+    const VVertexStruct* vertex,
+    const void* vertices,
+    uint32_t vertex_count,
+    int* color_stride_out);
 
 bool v_sdl3_renderer_init(SDL_Renderer* renderer) {
-  // TODO: use allocator from vuid
+  VRenderData* render_data = v_get_render_data();
   VSDL3RendererState* state = SDL_calloc(1, sizeof(VSDL3RendererState));
 
-  if (state) {
-    state->renderer = renderer;
-  }
-
-  VRenderData* render_data = v_get_render_data();
-
+  state->renderer = renderer;
   render_data->idata1 = state;
 
-  return state != NULL;
+  return true;
 }
 
 void v_sdl3_renderer_shutdown(void) {
   VRenderData* render_data = v_get_render_data();
+  if (!render_data) {
+    return;
+  }
+
+  VSDL3RendererState* state = render_data->idata1;
+
   const uint32_t texture_count = render_data->texture_count;
 
   for (uint32_t i = 0; i < texture_count; i++) {
@@ -45,67 +51,46 @@ void v_sdl3_renderer_shutdown(void) {
     info->state = V_TEXTURE_DESTROYED;
   }
 
-  if (render_data->idata1) {
-    VSDL3RendererState* state = render_data->idata1;
-
+  if (state) {
     SDL_free(state->color_buffer);
     SDL_free(state);
-
-    render_data->idata1 = NULL;
   }
+
+  render_data->idata1 = NULL;
 }
 
 void v_sdl3_renderer_render(void) {
   VRenderData* render_data = v_get_render_data();
-  VSDL3RendererState* state = render_data->idata1;
-  SDL_Renderer* renderer = state->renderer;
-  const uint32_t texture_count = render_data->texture_count;
-  const int index_size = (int)sizeof(render_data->indices[0]);
-
-  for (uint32_t i = 0; i < texture_count; i++) {
-    VTextureInfo* info = &render_data->textures[i];
-
-    switch (info->state) {
-      case V_TEXTURE_CREATING: {
-        if (info->idata) {
-          SDL_DestroyTexture(info->idata);
-          info->idata = NULL;
-        }
-
-        SDL_Texture* tex = v_sdl3_check_update_rect(info)
-                               ? v_sdl3_create_texture(renderer, info)
-                               : NULL;
-
-        if (tex) {
-          if (v_sdl3_upload_texture(tex, &info->pixels)) {
-            info->idata = tex;
-            info->state = V_TEXTURE_READY;
-          } else {
-            SDL_DestroyTexture(tex);
-          }
-        }
-        break;
-      }
-      case V_TEXTURE_UPDATING: {
-        SDL_Texture* tex = info->idata;
-
-        if (tex && v_sdl3_check_update_rect(info)) {
-          if (v_sdl3_upload_texture(tex, &info->pixels)) {
-            info->state = V_TEXTURE_READY;
-          }
-        }
-        break;
-      }
-      case V_TEXTURE_DESTROYING:
-        if (info->idata) {
-          SDL_DestroyTexture(info->idata);
-          info->idata = NULL;
-        }
-        break;
-      default:
-        break;
-    }
+  if (!render_data) {
+    return;
   }
+
+  VSDL3RendererState* state = render_data->idata1;
+  if (!state) {
+    return;
+  }
+
+  SDL_Renderer* renderer = state->renderer;
+  if (!renderer) {
+    return;
+  }
+
+  const VVertexStruct* vertex = render_data->vertex_format;
+  const uint32_t index_size =
+      render_data->index_format == V_DATA_FORMAT_U16 ? 2 : 4;
+
+  // Check that the vertex vertex is supported by this renderer
+  VUID_ASSERT(render_data->index_format == V_DATA_FORMAT_U32 ||
+              render_data->index_format == V_DATA_FORMAT_U16);
+  VUID_ASSERT(vertex->xy.format == V_DATA_FORMAT_F32);
+  VUID_ASSERT(vertex->uv.format == V_DATA_FORMAT_F32);
+  VUID_ASSERT(vertex->r.format == V_DATA_FORMAT_U8 ||
+              vertex->r.format == V_DATA_FORMAT_F32);
+  VUID_ASSERT(vertex->r.offset < vertex->g.offset &&
+              vertex->g.offset < vertex->b.offset &&
+              vertex->b.offset < vertex->a.offset);
+
+  v_sdl3_renderer_sync_textures(renderer, render_data);
 
   for (uint32_t i = 0; i < render_data->command_count; i++) {
     const VCommand* cmd = &render_data->commands[i];
@@ -125,13 +110,6 @@ void v_sdl3_renderer_render(void) {
         break;
       }
       case V_COMMAND_RENDER: {
-        const VVertex* start_vertex =
-            &render_data->vertices[cmd->u.render.vertex_offset];
-        const int* indices =
-            (const int*)&render_data->indices[cmd->u.render.index_offset];
-        const int stride = (int)sizeof(VVertex);
-        const SDL_FColor* color = v_sdl3_to_color_array(
-            state, start_vertex, cmd->u.render.vertex_count);
         SDL_Texture* texture = NULL;
 
         if (cmd->u.render.texture_id != 0) {
@@ -143,20 +121,37 @@ void v_sdl3_renderer_render(void) {
           }
         }
 
+        const uint8_t* verts =
+            ((const uint8_t*)render_data->vertices) +
+            ((uint32_t)vertex->size * cmd->u.render.vertex_offset);
+        const float* xy = (const float*)(verts + vertex->xy.offset);
+        const float* uv = (const float*)(verts + vertex->uv.offset);
+        int color_stride;
+        const SDL_FColor* color = v_sdl3_renderer_resolve_color(
+            state, render_data->vertex_format, verts,
+            cmd->u.render.vertex_count, &color_stride);
+        const void* indices = ((const uint8_t*)render_data->indices) +
+                              (cmd->u.render.index_offset * index_size);
+        const int stride = (int)vertex->size;
+
+        if (color == NULL) {
+          break;
+        }
+
         // clang-format off
         SDL_RenderGeometryRaw(
-            renderer,                    // renderer
-            texture,                     // texture (NULL for solid rect)
-            &start_vertex->x,            // xy pointer
-            stride,                      // xy stride
-            color,                       // color pointer
-            (int)sizeof(SDL_FColor),     // color stride
-            &start_vertex->u,            // uv pointer
-            stride,                      // uv stride
-            cmd->u.render.vertex_count,  // num_vertices
-            indices,                     // indices pointer
-            cmd->u.render.index_count,   // num_indices
-            index_size                   // size of each index (4 bytes)
+            renderer,                        // renderer
+            texture,                         // texture (NULL for solid rect)
+            xy,                              // xy pointer
+            stride,                          // xy stride
+            color,                           // color pointer
+            color_stride,                    // color stride
+            uv,                              // uv pointer
+            stride,                          // uv stride
+            (int)cmd->u.render.vertex_count, // num_vertices
+            indices,                         // indices pointer
+            (int)cmd->u.render.index_count,  // num_indices
+            (int)index_size                  // size of each index (4 bytes)
         );
         // clang-format on
         break;
@@ -244,25 +239,88 @@ static SDL_Texture* v_sdl3_create_texture(SDL_Renderer* renderer,
   return tex;
 }
 
-static const SDL_FColor* v_sdl3_to_color_array(VSDL3RendererState* state,
-                                               const VVertex* vertices,
-                                               uint32_t vertex_count) {
-  if (state->color_buffer_capacity < vertex_count) {
-    const uint32_t new_capacity = state->color_buffer_capacity == 0
-                                      ? 256
-                                      : state->color_buffer_capacity * 2;
-    // TODO: use allocator from vuid
-    state->color_buffer =
-        SDL_realloc(state->color_buffer, new_capacity * sizeof(SDL_FColor));
-    state->color_buffer_capacity = new_capacity;
-  }
+static const SDL_FColor* v_sdl3_renderer_resolve_color(
+    VSDL3RendererState* state,
+    const VVertexStruct* vertex,
+    const void* vertices,
+    uint32_t vertex_count,
+    int* color_stride_out) {
+  if (vertex->r.format == V_DATA_FORMAT_F32) {
+    *color_stride_out = (int)vertex->size;
+    return (const SDL_FColor*)((const uint8_t*)vertices + vertex->r.offset);
+  } else if (vertex->r.format == V_DATA_FORMAT_U8) {
+    size_t space_needed = vertex_count * sizeof(SDL_FColor);
 
-  for (uint32_t i = 0; i < vertex_count; i++) {
-    state->color_buffer[i].r = (float)vertices[i].r / 255.0f;
-    state->color_buffer[i].g = (float)vertices[i].g / 255.0f;
-    state->color_buffer[i].b = (float)vertices[i].b / 255.0f;
-    state->color_buffer[i].a = (float)vertices[i].a / 255.0f;
-  }
+    if (state->color_buffer_capacity < space_needed) {
+      state->color_buffer = SDL_realloc(state->color_buffer, space_needed);
+      state->color_buffer_capacity = space_needed;
+    }
 
-  return state->color_buffer;
+    SDL_FColor* dst = (SDL_FColor*)state->color_buffer;
+
+    for (uint32_t i = 0; i < vertex_count; i++) {
+      const uint8_t* src =
+          (const uint8_t*)vertices + (i * (uint32_t)vertex->size);
+
+      dst[i].r = (float)(*(src + vertex->r.offset)) / 255.0f;
+      dst[i].g = (float)(*(src + vertex->g.offset)) / 255.0f;
+      dst[i].b = (float)(*(src + vertex->b.offset)) / 255.0f;
+      dst[i].a = (float)(*(src + vertex->a.offset)) / 255.0f;
+    }
+
+    *color_stride_out = (int)sizeof(SDL_FColor);
+    return state->color_buffer;
+  } else {
+    return NULL;
+  }
+}
+
+static void v_sdl3_renderer_sync_textures(SDL_Renderer* renderer,
+                                          VRenderData* render_data) {
+  const uint32_t texture_count = render_data->texture_count;
+
+  for (uint32_t i = 0; i < texture_count; i++) {
+    VTextureInfo* info = &render_data->textures[i];
+
+    switch (info->state) {
+      case V_TEXTURE_CREATING: {
+        if (info->idata) {
+          SDL_DestroyTexture(info->idata);
+          info->idata = NULL;
+        }
+
+        SDL_Texture* tex = v_sdl3_check_update_rect(info)
+                               ? v_sdl3_create_texture(renderer, info)
+                               : NULL;
+
+        if (tex) {
+          if (v_sdl3_upload_texture(tex, &info->pixels)) {
+            info->idata = tex;
+            info->state = V_TEXTURE_READY;
+          } else {
+            SDL_DestroyTexture(tex);
+          }
+        }
+        break;
+      }
+      case V_TEXTURE_UPDATING: {
+        SDL_Texture* tex = info->idata;
+
+        if (tex && v_sdl3_check_update_rect(info)) {
+          if (v_sdl3_upload_texture(tex, &info->pixels)) {
+            info->state = V_TEXTURE_READY;
+          }
+        }
+        break;
+      }
+      case V_TEXTURE_DESTROYING:
+        if (info->idata) {
+          SDL_DestroyTexture(info->idata);
+          info->idata = NULL;
+        }
+        break;
+      default:
+        break;
+    }
+  }
 }

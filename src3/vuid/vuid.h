@@ -119,6 +119,11 @@ typedef enum VOverflow {
   V_OVERFLOW_SCROLL,
 } VOverflow;
 
+typedef enum VVisibility {
+  V_VISIBILITY_VISIBLE,
+  V_VISIBILITY_HIDDEN,
+} VVisibility;
+
 typedef enum VAlignX {
   V_ALIGN_X_LEFT,
   V_ALIGN_X_CENTER,
@@ -287,26 +292,63 @@ typedef struct VInputEvent {
 // ============================================================
 
 typedef enum VNodeEventType {
+  // TODO: partially implemented (sends on up, no mouse info in event)
   V_NODE_EVENT_CLICK,
-  V_NODE_EVENT_MOUSE_ENTER,
-  V_NODE_EVENT_MOUSE_LEAVE,
+  // TODO: partially implemented (dispatches to root only)
   V_NODE_EVENT_KEY_DOWN,
+  // TODO: partially implemented (dispatches to root only)
   V_NODE_EVENT_KEY_UP,
+  /*
+   * Fired when the mouse cursor enters the node's visual area.
+   *
+   * - target:         The node that the cursor entered.
+   * - related_target: The node that the cursor left.
+   * - bubbles:        Yes
+   */
+  V_NODE_EVENT_MOUSE_ENTER,
+  /*
+   * Fired when the mouse cursor leaves the node's visual area.
+   *
+   * - target:         The node that the cursor left.
+   * - related_target: The node that the cursor entered.
+   * - bubbles:        Yes
+   */
+  V_NODE_EVENT_MOUSE_LEAVE,
+  /*
+   * Fired when a node loses focus.
+   *
+   * - target:         The node that lost focus.
+   * - related_target: The node that gained focus as a result of this node losing focus.
+   * - bubbles:        Yes
+   */
+  V_NODE_EVENT_BLUR,
+  /*
+   * Fired when a node gains focus.
+   *
+   * - target:         The node that gained focus.
+   * - related_target: The node that lost focus as a result of this node gaining focus.
+   * - bubbles:        Yes
+   */
+  V_NODE_EVENT_FOCUS,
   V_NODE_EVENT__COUNT,
 } VNodeEventType;
 
 typedef struct VNodeEvent {
-  int    type;
-  VNode* target;
+  VNodeEventType    type;
+  VNode*            target;
+  VNode*            related_target;
 } VNodeEvent;
 
+// TODO: move to node event
 typedef struct VKeyNodeEvent {
-  int       type;
-  VNode*    target;
-  VKey      key;
-  uint32_t  modifiers;
-  int       repeat_count;
-  bool      down;
+  VNodeEventType    type;
+  uint32_t          internal;
+  VNode*            target;
+  VNode*            related_target;
+  VKey              key;
+  uint32_t          modifiers;
+  int               repeat_count;
+  bool              down;
 } VKeyNodeEvent;
 
 typedef void (*VNodeEventListener)(VNode* node, VNodeEvent* event);
@@ -389,11 +431,38 @@ typedef struct VTextureInfo {
   void*         idata;          /* integration stores its GPU texture handle here */
 } VTextureInfo;
 
-typedef struct VVertex {
-  float   x, y;
-  float   u, v;
-  uint8_t r, g, b, a;
-} VVertex;
+/* Data formats */
+typedef enum VDataFormat {
+    /* Default format, used for 0 initialization where vuid picks the default. */
+    V_DATA_FORMAT_DEFAULT = 0,
+    /* 8-bit unsigned integer format. */
+    V_DATA_FORMAT_U8,
+    /* 16-bit unsigned integer format. */
+    V_DATA_FORMAT_U16,
+    /* 32-bit unsigned integer format. */
+    V_DATA_FORMAT_U32,
+    /* 32-bit floating point format. */
+    V_DATA_FORMAT_F32,
+} VDataFormat;
+
+/* Struct field */
+typedef struct VStructField {
+    /* data format/type of this field */
+    VDataFormat format;
+    /* byte offset of this field within the struct */
+    size_t offset;
+} VStructField;
+
+/* Vertex data format. */
+typedef struct VVertexStruct {
+    VStructField xy;
+    VStructField uv;
+    VStructField r;
+    VStructField g;
+    VStructField b;
+    VStructField a;
+    size_t size;
+} VVertexStruct;
 
 typedef enum VCommandType {
   V_COMMAND_RENDER,
@@ -421,16 +490,18 @@ typedef struct VCommand {
 } VCommand;
 
 typedef struct VRenderData {
-  void*            idata0; /* integration stores its platform/window data here */
-  void*            idata1; /* integration stores its surface/renderer data here */
-  VTextureInfo*    textures;
-  const VVertex*   vertices;
-  const uint32_t*  indices;
-  const VCommand*  commands;
-  uint32_t         texture_count;
-  uint32_t         vertex_count;
-  uint32_t         index_count;
-  uint32_t         command_count;
+  void*                idata0; /* integration stores its platform/window data here */
+  void*                idata1; /* integration stores its surface/renderer data here */
+  VTextureInfo*        textures;
+  const void*          vertices;
+  const void*          indices;
+  const VCommand*      commands;
+  const VVertexStruct* vertex_format;
+  uint32_t             texture_count;
+  uint32_t             vertex_count;
+  uint32_t             index_count;
+  uint32_t             command_count;
+  VDataFormat          index_format;
 } VRenderData;
 
 // ============================================================
@@ -503,6 +574,7 @@ VUID_API VNode*       v_get_node_by_id(const char* id);
 VUID_API VNode*       v_get_node_by_id_fmt(const char* fmt, ...) VUID_GNUATTR(format(printf, 1, 2));
 VUID_API void         v_set_popover_backdrop_color(VColor color);
 VUID_API VColor       v_get_popover_backdrop_color(void);
+VUID_API VNode*       v_get_focused_node(void);
 
 // ============================================================
 // Node API
@@ -550,6 +622,10 @@ VUID_API VPopover     v_node_popover(const VNode* node);
 VUID_API void         v_node_set_popover(VNode* node, VPopover type);
 VUID_API bool         v_node_show_popover(VNode* node);
 VUID_API void         v_node_hide_popover(VNode* node);
+
+VUID_API bool         v_node_focus(VNode* node);
+VUID_API bool         v_node_blur(VNode* node);
+VUID_API bool         v_node_has_focus(const VNode* node);
 
 VUID_API void         v_node_set_event_listener(VNode* node, int event_type, VNodeEventListener listener);
 
@@ -614,6 +690,11 @@ VUID_API void          vs_set_direction(VStyle* style, VDirection value);
 VUID_API VDirection    vs_get_direction(const VStyle* style);
 VUID_API void          vs_unset_direction(VStyle* style);
 VUID_API bool          vs_has_direction(const VStyle* style);
+
+VUID_API void          vs_set_visibility(VStyle* style, VVisibility value);
+VUID_API VVisibility   vs_get_visibility(const VStyle* style);
+VUID_API void          vs_unset_visibility(VStyle* style);
+VUID_API bool          vs_has_visibility(const VStyle* style);
 
 VUID_API void          vs_set_wrap(VStyle* style, VWrap value);
 VUID_API VWrap         vs_get_wrap(const VStyle* style);

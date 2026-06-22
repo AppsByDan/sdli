@@ -43,6 +43,7 @@
 #define UNUSED(...) (UNUSED_1(__VA_ARGS__, 0))
 
 #define VUID_ALIGN_UP(X, A) (((X) + (A) - 1) & ~((A) - 1))
+#define VUID_ARRAY_LEN(x) (sizeof(x) / sizeof(x[0]))
 
 /*
  * Marks a function as package private. This is used for functions that are
@@ -197,41 +198,36 @@ static inline uint32_t v_fnv1_hash_u32(uint32_t value) {
 #define VUID_STD_STRING_H
 
 
-/*
- * VStringInternal is a string type using small string optimization. The
- * implementation is heavily based on cstr in https://github.com/stclib/STC.
- */
-typedef union VStringInternal {
-  struct {
-    char data[sizeof(char*) + 2 * sizeof(size_t)];
-  } sml;
-  struct {
-    char* data;
-    size_t size;
-    size_t ncap;
-  } lon;
-} VStringInternal;
+// (1 << 31)
+#define VUID_STRING_EXTERNAL_BIT 0x80000000
+// UINT32_MAX ^ (1 << 31) - sizeof (VString) - 1
+#define VUID_STRING_MAX_SIZE \
+  ((uint32_t)(0x7FFFFFFF) - (uint32_t)(sizeof(VString) - 1))
+
+typedef struct VString {
+  union {
+    VAllocator* allocator;
+    const char* external;
+  } u;
+  uint32_t meta;
+  uint32_t refs;
+} VString;
 
 // clang-format off
-static inline VStringInternal v_stri_init(void) { return (VStringInternal){0}; }
-VUID_PKG VStringInternal   v_stri_from_cstr(VAllocator* allocator, const char* cstr);
-
-VUID_PKG void        v_stri_drop(VStringInternal* self, VAllocator* allocator);
-VUID_PKG void        v_stri_assign(VStringInternal* self, VAllocator* allocator, const char* str);
-VUID_PKG void        v_stri_assign_n(VStringInternal* self, VAllocator* allocator, const char* str, size_t size);
-VUID_PKG void        v_stri_assign_vfmt(VStringInternal* self, VAllocator* allocator, const char* fmt, va_list args);
-VUID_PKG bool        v_stri_eq(const VStringInternal* a, const VStringInternal* b);
-VUID_PKG bool        v_stri_ieq(const VStringInternal* a, const VStringInternal* b);
-VUID_PKG bool        v_stri_eq_cstr_n(const VStringInternal* a, const char* b, size_t b_size);
-VUID_PKG bool        v_stri_eq_cstr(const VStringInternal* a, const char* b);
-VUID_PKG void        v_stri_clear(VStringInternal* self);
-VUID_PKG size_t      v_stri_size(const VStringInternal* self);
-VUID_PKG const char* v_stri_str(const VStringInternal* self);
-VUID_PKG bool        v_stri_is_empty(const VStringInternal* self);
-// exposed for testing
-VUID_PKG bool        v_stri_is_long(const VStringInternal* self);
-VUID_PKG size_t      v_stri_s_cap(void);
+VUID_PKG VString*    v_string_from(VAllocator* allocator, const char* str);
+VUID_PKG VString*    v_string_from_vfmt(VAllocator* allocator, const char* fmt, va_list args);
+VUID_PKG void        v_string_ref(VString* self);
+VUID_PKG void        v_string_unref(VString* self);
+VUID_PKG const char* v_string_cstr(const VString* self);
+VUID_PKG bool        v_string_eq(const VString* a, const VString* b);
+VUID_PKG bool        v_string_eq_cstr(const VString* a, const char* b);
+VUID_PKG bool        v_string_is_empty(const VString* self);
+VUID_PKG uint32_t    v_string_size(const VString* self);
 // clang-format on
+
+static inline bool v_string_is_external(const VString* self) {
+  return (self->meta & VUID_STRING_EXTERNAL_BIT) != 0;
+}
 
 /*
  * Miscellaneous char and string functions.
@@ -688,6 +684,8 @@ VUID_PKG void*   v_array_push_one(VArray* self);
 VUID_PKG bool    v_array_push_n(VArray* self, size_t count);
 /* Remove the last item from the array. If array is empty, noop. */
 VUID_PKG void    v_array_pop(VArray* self);
+/* Remove the last item from a ptr array and return its ptr. If array is empty, noop and return NULL. */
+VUID_PKG void*   v_array_pop_ptr(VArray* self);
 /* Remove an item at the specified index. If index is out of bounds, noop. */
 VUID_PKG void    v_array_remove(VArray* self, size_t index);
 /* Insert an item at the specified index, shifting elements right. If index >= size, appends. return false: allocation failed */
@@ -702,14 +700,14 @@ static inline void v_array_clear(VArray* self) {
 }
 
 /* Get an item without bounds checking */
-static inline void* v_array_get_unchecked(const VArray* array, size_t index) {
-  return (uint8_t*)(array->items) + index * array->item_size;
+static inline void* v_array_get_unchecked(const VArray* self, size_t index) {
+  return (uint8_t*)(self->items) + index * self->item_size;
 }
 
 /* Get an item without bounds checking. Special case for pointer arrays. */
-static inline void* v_array_get_ptr_unchecked(const VArray* array,
+static inline void* v_array_get_ptr_unchecked(const VArray* self,
                                               size_t index) {
-  return ((void**)array->items)[index];
+  return ((void**)self->items)[index];
 }
 
 #endif  // VUID_STD_ARR_H
@@ -771,6 +769,7 @@ VUID_PKG VImageStore* v_ctx_image_store(void);
 VUID_PKG bool         v_ctx_intern_string(const char* str, struct VStaticString* out);
 VUID_PKG uint32_t     v_ctx_create_texture(VPixelFormat format, const VImageBuffer* buffer);
 VUID_PKG void         v_ctx_destroy_texture(uint32_t texture_id);
+VUID_PKG void         v_ctx_request_render(void);
 // clang-format on
 
 #define v_ctx_new(TYPE) v_alloc_zero(v_ctx_allocator(), sizeof(TYPE))
@@ -899,6 +898,9 @@ typedef struct VCommandQueue {
   uint32_t cmd_index_offset;      /* next available index offset */
   uint32_t cmd_vertex_index_base; /* base vertex index for the current command */
   uint32_t batch_quad_count;      /* number of quads in the current batch */
+
+  VVertexStruct vertex_format;
+  VDataFormat index_format;
 } VCommandQueue;
 
 /* initialize command queue */
@@ -1037,7 +1039,7 @@ static inline float v_insets_height(const VInsets* insets) {
 typedef struct VImage VImage;
 
 struct VImage {
-  VStringInternal src;
+  VString* src;
   VImageBuffer buffer;
   VBuffer file_buffer;
   uint32_t texture_id;
@@ -1072,7 +1074,7 @@ VUID_PKG bool v_image_store_init(VImageStore* self,
                                  VImageLoaderFn loader);
 VUID_PKG void v_image_store_drop(VImageStore* self);
 
-VUID_PKG VImage* v_image_store_acquire(VImageStore* self, const char* src);
+VUID_PKG VImage* v_image_store_acquire(VImageStore* self, VString* src);
 VUID_PKG void v_image_store_release(VImageStore* self, VImage* image);
 
 VUID_PKG bool v_image_store_persist(VImageStore* self, const char* src);
@@ -1149,25 +1151,11 @@ typedef struct VTextLayout VTextLayout;
 typedef struct VFontData VFontData;
 typedef struct VGlyphAtlas VGlyphAtlas;
 
-/*
- * Packed key for the font face cache.
- * Upper 16 bits = font_id, lower 16 bits = pixel_size.
- */
-typedef struct VFontFaceKey {
-  uint32_t packed;
-} VFontFaceKey;
-
-/* Cached per-size metrics for a single (font_id, pixel_size) combination. */
-typedef struct VFontFace {
-  uint16_t font_id;
-  uint16_t pixel_size; /* font size in pixels*/
-  float ascent;        /* positive, pixels above baseline */
-  float descent;       /* negative, pixels below baseline */
-  float line_height;   /* line advance in pixels */
-  uint32_t last_used_frame;
-} VFontFace;
-
-VUID_HMAP_DECLARE(VFontFaceMap, VFontFaceKey, VFontFace, v_font_face_map);
+typedef struct VFontMetrics {
+  float ascent;      /* positive, pixels above baseline */
+  float descent;     /* negative, pixels below baseline */
+  float line_height; /* line advance in pixels */
+} VFontMetrics;
 
 typedef struct VAtlasCacheEntry VAtlasCacheEntry;
 
@@ -1227,25 +1215,6 @@ typedef struct VGlyphBitmapDesc {
 
 #endif  // VUID_TEXT_MOD_FWD_H
 
-#ifndef VUID_TEXT_FONT_FACE_H
-#define VUID_TEXT_FONT_FACE_H
-
-
-
-/*
- * Look up or create a VFontFace entry in the cache.
- * Ensures the correct pixel size is set on font_data as a side effect.
- * Returns a pointer into the map (valid until the next put), or NULL on
- * failure.
- */
-VUID_PKG VFontFace* v_font_face_get_or_create(VTextEngine* text_engine,
-                                              VFontFaceMap* cache,
-                                              VFontData* font_data,
-                                              uint16_t pixel_size,
-                                              uint32_t frame);
-
-#endif  // VUID_TEXT_FONT_FACE_H
-
 #ifndef VUID_TEXT_FONT_DATA_H
 #define VUID_TEXT_FONT_DATA_H
 
@@ -1290,6 +1259,9 @@ VUID_PKG void v_font_data_drop(VFontData* self);
 VUID_PKG bool v_font_data_set_pixel_size(VFontData* self, uint16_t pixel_size);
 
 VUID_PKG bool v_font_data_is_legal_name(const char* name);
+
+VUID_PKG bool v_font_data_get_metrics(VFontData* self,
+                                      VFontMetrics* font_metrics);
 
 #endif  // VUID_TEXT_FONT_DATA_H
 
@@ -1389,7 +1361,6 @@ struct VTextModule {
   VArray /* VShapedGlyph[] */ scratch_shaped;
   VArray /* VTextGlyph[] */ scratch_glyphs;
   VArray /* VTextLine[] */ scratch_lines;
-  VFontFaceMap font_face_cache;
   VGlyphAtlas atlas;
   uint32_t current_frame;
   uint16_t next_font_id; /* starts at 1; 0 is the invalid sentinel */
@@ -1419,7 +1390,7 @@ VUID_PKG void v_text_module_remove_font(VTextModule* self, const char* name);
 VUID_PKG VTextLayout* v_text_module_create_layout(VTextModule* self,
                                                   uint16_t font_id,
                                                   uint16_t pixel_size,
-                                                  const VStringInternal* utf8,
+                                                  const VString* utf8,
                                                   VTextWrap wrap,
                                                   VAlignX talign,
                                                   float wrap_width);
@@ -1538,7 +1509,7 @@ VUID_PKG VTextLayout* v_text_layout_build(VAllocator* allocator,
                                           const VShapedGlyph* shaped,
                                           uint32_t shaped_count,
                                           const char* utf8,
-                                          const VFontFace* face,
+                                          const VFontMetrics* font_metrics,
                                           VTextWrap wrap,
                                           VAlignX talign,
                                           float wrap_width,
@@ -1566,6 +1537,7 @@ typedef enum VStyleProperty {
   VS_WIDTH = 0,
   VS_HEIGHT,
   VS_DIRECTION,
+  VS_VISIBILITY,
   VS_WRAP,
   VS_XALIGN,
   VS_YALIGN,
@@ -1660,12 +1632,11 @@ struct WeakRef;
 
 typedef enum VNodeFlag {
   V_NODEFLAG_NONE = 0,
-  V_NODEFLAG_HOVERED = 1 << 0,
-  V_NODEFLAG_DIRTY = 1 << 1,
-  V_NODEFLAG_HIDDEN = 1 << 2,
-  V_NODEFLAG_POPOVER_OPEN = 1 << 3,
-  V_NODEFLAG_ATTACHED = 1 << 4,
-  V_NODEFLAG_LEAF = 1 << 5,
+  V_NODEFLAG_DIRTY = 1 << 0,
+  V_NODEFLAG_HIDDEN = 1 << 1,
+  V_NODEFLAG_POPOVER_OPEN = 1 << 2,
+  V_NODEFLAG_ATTACHED = 1 << 3,
+  V_NODEFLAG_LEAF = 1 << 4,
 } VNodeFlag;
 
 struct VNode {
@@ -1702,8 +1673,8 @@ struct VNode {
   } res;
 
   union {
-    VStringInternal text;
-    VStringInternal src;
+    VString* text;
+    VString* src;
   } res_data;
 
   void* user_data;
@@ -1782,6 +1753,7 @@ typedef enum VStylePropertyTag {
   VSTAG_ENUM_ATTACH_POINT_X,
   VSTAG_ENUM_ATTACH_POINT_Y,
   VSTAG_ENUM_POSITION,
+  VSTAG_ENUM_VISIBILITY,
   VSTAG_FLOAT,
 } VStylePropertyTag;
 
@@ -1804,6 +1776,7 @@ typedef struct VStylePropertyMeta {
     VAttachPointX attach_point_x;
     VAttachPointY attach_point_y;
     VPosition position;
+    VVisibility visibility;
     const char* str;
   } default_value;
 
@@ -1822,6 +1795,7 @@ typedef struct VStylePropertyMeta {
     void (*attach_point_y)(VStyle*, VAttachPointY);
     void (*position)(VStyle*, VPosition);
     void (*text_wrap)(VStyle*, VTextWrap);
+    void (*visibility)(VStyle*, VVisibility);
     void (*str)(VStyle*, const char*);
   } set_fn;
 
@@ -1840,10 +1814,16 @@ typedef struct VStylePropertyMeta {
     VAttachPointY (*attach_point_y)(const VStyle*);
     VPosition (*position)(const VStyle*);
     VTextWrap (*text_wrap)(const VStyle*);
+    VVisibility (*visibility)(const VStyle*);
     const char* (*str)(const VStyle*);
   } get_fn;
 
+  /* if true, change to this prop marks owner as dirty. */
+  bool affects_layout;
+  /* if true, change to this prop requires owner text layout to rebuild. */
   bool affects_text_style;
+  /* if true, change to this prop requires a re-render of the owner. */
+  bool affects_render;
 } VStylePropertyMeta;
 
 VUID_PKG const VStylePropertyMeta* v_style_get_prop_meta(
@@ -1878,6 +1858,7 @@ struct VStyle {
   VAttachPointY attach_point_y;
   VOverflow overflow;
   VPosition position;
+  VVisibility visibility;
   uint16_t font_size;
   uint16_t gap;
   uint16_t padding_top;
@@ -1987,8 +1968,9 @@ struct VNodeModule {
   VArray /*<Node*[]>*/ popover_stack;
   VArray /*<Node*[]>*/ event_path;
   VNode* hovered_node;
-  VNode* active_node;
+  VNode* under_mouse_node;
   VNode* drag_node;
+  VNode* focused_node;
   float drag_start_y;
   float drag_start_scroll_y;
   VColor popover_backdrop_color;
@@ -2004,6 +1986,15 @@ VUID_PKG void    v_node_module_add_node_id(VNode* node);
 VUID_PKG void    v_node_module_remove_node_id(VNode* node);
 VUID_PKG void    v_node_module_remove_popover_node(VNode* node);
 VUID_PKG void    v_node_module_remove_input_node(VNode* node);
+
+/* get the start index of the event path for pushing new nodes */
+VUID_PKG size_t  v_event_path_start(VArray* event_path);
+/* reset the event path to a given start index, unrefing nodes that are removed from the path */
+VUID_PKG void    v_event_path_reset(VArray* event_path, size_t start_index);
+/* add a node to the event path. if the node does not have the event listener, it is not added to the path */
+VUID_PKG void    v_event_path_push_ref(VArray* event_path, VNodeEventType type, VNode* node);
+/* dispatch an event along the event path from start_index (inclusive) to end_index (exclusive) */
+VUID_PKG void    v_event_path_dispatch(VArray* event_path, VNodeEvent* event, size_t start_index, size_t end_index);
 // clang-format on
 
 static inline VStyleClassHashMap* v_node_module_get_style_sheet(void) {
@@ -2131,6 +2122,19 @@ VUID_PKG void v_array_pop(VArray* self) {
   if (self->size > 0) {
     --self->size;
   }
+}
+
+VUID_PKG void* v_array_pop_ptr(VArray* self) {
+  void* result;
+
+  if (self->size > 0) {
+    result = ((void**)self->items)[self->size - 1];
+    self->size--;
+  } else {
+    result = NULL;
+  }
+
+  return result;
 }
 
 VUID_PKG void* v_array_get(const VArray* array, size_t index) {
@@ -2272,270 +2276,17 @@ static FILE* v_fopen_rb(VAllocator* allocator, const char* path) {
 }
 
 
-#define VUID_STRI_S_LAST (sizeof(VStringInternal) - 1)
-#define VUID_STRI_S_CAP (VUID_STRI_S_LAST - 1)
-#define VUID_STRI_MAX_CAP ((size_t) - 1 >> 1)
-
 #define VUID_UTF8_ACCEPT 0
 #define VUID_UTF8_REJECT 1
 
+// TODO: not sure about this design, but fine for now
+static VString VUID_EMPTY_STRING = {
+    .u.external = "",
+    .meta = VUID_STRING_EXTERNAL_BIT,
+    .refs = 0,
+};
+
 static uint32_t v_utf8_decode(uint32_t* state, uint32_t* codep, uint32_t byte);
-
-static inline size_t v_stri_s_size(const VStringInternal* self) {
-  return (size_t)(self)->sml.data[VUID_STRI_S_LAST];
-}
-
-static inline void v_stri_s_set_size(VStringInternal* self, size_t len) {
-  self->sml.data[VUID_STRI_S_LAST] = (char)(len);
-  self->sml.data[len] = '\0';
-}
-
-static inline const char* v_stri_s_data_const(const VStringInternal* self) {
-  return self->sml.data;
-}
-
-static inline size_t v_stri_l_size(const VStringInternal* self) {
-  return self->lon.size;
-}
-
-static inline void v_stri_l_set_size(VStringInternal* self, size_t len) {
-  self->lon.size = len;
-  self->lon.data[len] = '\0';
-}
-
-static inline const char* v_stri_l_data_const(const VStringInternal* self) {
-  return self->lon.data;
-}
-
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define v_stri_byte_rotl(x, b) ((x) << (b) * 8 | (x) >> (sizeof(x) - (b)) * 8)
-static inline size_t v_stri_l_cap(const VStringInternal* self) {
-  return ~v_stri_byte_rotl(self->lon.ncap, sizeof(self->lon.ncap) - 1);
-}
-static inline void v_stri_l_set_cap(VStringInternal* self, size_t cap) {
-  self->lon.ncap = ~v_stri_byte_rotl(cap, 1);
-}
-#else
-static inline size_t v_stri_l_cap(const VStringInternal* self) {
-  return ~(self->lon.ncap);
-}
-static inline void v_stri_l_set_cap(VStringInternal* self, size_t cap) {
-  self->lon.ncap = ~cap;
-}
-#endif
-
-static char* v_stri_reserve(VStringInternal* self,
-                            VAllocator* allocator,
-                            size_t cap) {
-  const size_t real_cap = (cap > VUID_STRI_MAX_CAP) ? VUID_STRI_MAX_CAP : cap;
-
-  if (v_stri_is_long(self)) {
-    if (real_cap > v_stri_l_cap(self)) {
-      // TODO: what if alloc fails?
-      self->lon.data = v_realloc(allocator, self->lon.data,
-                                 v_stri_l_cap(self) + 1, real_cap + 1);
-      v_stri_l_set_cap(self, real_cap);
-    }
-    return self->lon.data;
-  } else if (real_cap > VUID_STRI_S_CAP) {
-    const size_t len = v_stri_s_size(self);
-    // TODO: ??
-    char* data = v_alloc_zero(allocator, real_cap + 1);
-
-    if (data) {
-      memcpy(data, self->sml.data, len + 1);
-      self->lon.data = data;
-      self->lon.size = len;
-      v_stri_l_set_cap(self, real_cap);
-    }
-
-    return data;
-  } else {
-    return self->sml.data;
-  }
-}
-
-VUID_PKG void v_stri_assign(VStringInternal* self,
-                            VAllocator* allocator,
-                            const char* str) {
-  v_stri_assign_n(self, allocator, str, str ? strlen(str) : 0);
-}
-
-VUID_PKG void v_stri_assign_n(VStringInternal* self,
-                              VAllocator* allocator,
-                              const char* str,
-                              size_t size) {
-  const size_t str_size = (size > VUID_STRI_MAX_CAP) ? VUID_STRI_MAX_CAP : size;
-
-  if (str_size == 0) {
-    v_stri_clear(self);
-    return;
-  }
-
-  char* data = v_stri_reserve(self, allocator, str_size);
-
-  if (!data) {
-    // TODO: assert? return false?
-    return;
-  }
-
-  memmove(data, str, str_size);
-
-  if (v_stri_is_long(self)) {
-    v_stri_l_set_size(self, str_size);
-  } else {
-    v_stri_s_set_size(self, str_size);
-  }
-}
-
-VUID_PKG bool v_stri_eq(const VStringInternal* a, const VStringInternal* b) {
-  const size_t a_size = v_stri_size(a);
-  const size_t b_size = v_stri_size(b);
-
-  if (a_size != b_size) {
-    return false;
-  }
-
-  if (a_size == 0) {
-    return true;
-  }
-
-  const char* a_buf = v_stri_str(a);
-  const char* b_buf = v_stri_str(b);
-
-  return a_buf == b_buf || memcmp(a_buf, b_buf, a_size) == 0;
-}
-
-VUID_PKG bool v_stri_eq_cstr_n(const VStringInternal* a,
-                               const char* b,
-                               size_t b_size) {
-  const size_t a_size = v_stri_size(a);
-
-  if (a_size != b_size) {
-    return false;
-  }
-
-  if (a_size == 0) {
-    return true;
-  }
-
-  const char* a_buf = v_stri_str(a);
-
-  return a_buf == b || memcmp(a_buf, b, b_size) == 0;
-}
-
-VUID_PKG bool v_stri_eq_cstr(const VStringInternal* a, const char* b) {
-  const size_t a_size = v_stri_size(a);
-
-  if (b == NULL || *b == '\0') {
-    return a_size == 0;
-  }
-
-  if (a_size == 0) {
-    return false;
-  }
-
-  return strcmp(v_stri_str(a), b) == 0;
-}
-
-VUID_PKG bool v_stri_ieq(const VStringInternal* a, const VStringInternal* b) {
-  const size_t a_size = v_stri_size(a);
-  const size_t b_size = v_stri_size(b);
-
-  if (a_size != b_size) {
-    return false;
-  }
-
-  if (a_size == 0) {
-    return true;
-  }
-
-  const char* a_buf = v_stri_str(a);
-  const char* b_buf = v_stri_str(b);
-
-  if (a_buf == b_buf) {
-    return true;
-  }
-
-  for (size_t i = 0; i < a_size; i++) {
-    if (v_char_tolower(a_buf[i]) != v_char_tolower(b_buf[i])) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-VUID_PKG void v_stri_drop(VStringInternal* self, VAllocator* allocator) {
-  if (v_stri_is_long(self)) {
-    v_free(allocator, self->lon.data, self->lon.size + 1);
-  }
-}
-
-VUID_PKG VStringInternal v_stri_from_cstr(VAllocator* allocator,
-                                          const char* cstr) {
-  VStringInternal str = v_stri_init();
-  v_stri_assign(&str, allocator, cstr);
-  return str;
-}
-
-VUID_PKG void v_stri_assign_vfmt(VStringInternal* self,
-                                 VAllocator* allocator,
-                                 const char* fmt,
-                                 va_list args) {
-  va_list args2;
-  va_copy(args2, args);
-  const int n = vsnprintf(NULL, 0ULL, fmt, args);
-
-  if (n < 0) {
-    // TODO: assert?
-    va_end(args2);
-    return;
-  }
-
-  const size_t len = (size_t)n;
-  char* buf = v_stri_reserve(self, allocator, len);
-
-  if (!buf) {
-    va_end(args2);
-    return;
-  }
-
-  vsnprintf(buf, len + 1, fmt, args2);
-  va_end(args2);
-
-  if (v_stri_is_long(self)) {
-    v_stri_l_set_size(self, len);
-  } else {
-    v_stri_s_set_size(self, len);
-  }
-}
-
-VUID_PKG void v_stri_clear(VStringInternal* self) {
-  v_stri_is_long(self) ? v_stri_l_set_size(self, 0)
-                       : v_stri_s_set_size(self, 0);
-}
-
-VUID_PKG size_t v_stri_size(const VStringInternal* self) {
-  return v_stri_is_long(self) ? v_stri_l_size(self) : v_stri_s_size(self);
-}
-
-VUID_PKG const char* v_stri_str(const VStringInternal* self) {
-  return v_stri_is_long(self) ? v_stri_l_data_const(self)
-                              : v_stri_s_data_const(self);
-}
-
-VUID_PKG bool v_stri_is_empty(const VStringInternal* self) {
-  return v_stri_size(self) == 0;
-}
-
-VUID_PKG bool v_stri_is_long(const VStringInternal* self) {
-  return ((self)->sml.data[VUID_STRI_S_LAST] & 128) != 0;
-}
-
-VUID_PKG size_t v_stri_s_cap(void) {
-  return VUID_STRI_S_CAP;
-}
 
 VUID_PKG bool v_utf8_get_codepoint(const uint8_t* utf8,
                                    uint32_t* codepoint,
@@ -2554,6 +2305,113 @@ VUID_PKG bool v_utf8_get_codepoint(const uint8_t* utf8,
   }
 
   return false;
+}
+
+VUID_PKG VString* v_string_from(VAllocator* allocator, const char* str) {
+  const size_t size = str ? strlen(str) : 0;
+
+  if (size == 0) {
+    return &VUID_EMPTY_STRING;
+  }
+
+  if (size > VUID_STRING_MAX_SIZE) {
+    return NULL;
+  }
+
+  VString* result = v_alloc_raw(allocator, sizeof(VString) + size + 1);
+
+  if (result) {
+    char* data = (char*)(result + 1);
+
+    memcpy(data, str, size);
+    data[size] = '\0';
+    result->u.allocator = allocator;
+    result->meta = (uint32_t)size;
+    result->refs = 1;
+  }
+
+  return result;
+}
+
+VUID_PKG VString* v_string_from_vfmt(VAllocator* allocator,
+                                     const char* fmt,
+                                     va_list args) {
+  va_list args_copy;
+
+  va_copy(args_copy, args);
+  int size = vsnprintf(NULL, 0, fmt, args_copy);
+  va_end(args_copy);
+
+  if (size == 0) {
+    return &VUID_EMPTY_STRING;
+  }
+
+  if (size > (int)VUID_STRING_MAX_SIZE) {
+    return NULL;
+  }
+
+  VString* result = v_alloc_raw(allocator, sizeof(VString) + size + 1);
+
+  if (result) {
+    char* data = (char*)(result + 1);
+
+    vsnprintf(data, size + 1, fmt, args);
+    result->u.allocator = allocator;
+    result->meta = (uint32_t)size;
+    result->refs = 1;
+  }
+
+  return result;
+}
+
+VUID_PKG void v_string_ref(VString* self) {
+  if (self && !v_string_is_external(self)) {
+    if (self->refs < UINT32_MAX) {
+      self->refs++;
+    } else {
+      // TODO: VUID_ASSERT(false && "VString ref count overflow");
+    }
+  }
+}
+
+VUID_PKG void v_string_unref(VString* self) {
+  if (self && !v_string_is_external(self)) {
+    const uint32_t ref_count = self->refs;
+
+    if (ref_count > 1) {
+      self->refs--;
+    } else if (ref_count == 1) {
+      v_free(self->u.allocator, self,
+             (uint32_t)sizeof(VString) + self->meta + 1);
+    } else {
+      // TODO: VUID_ASSERT(false && "VString ref count underflow");
+    }
+  }
+}
+
+VUID_PKG const char* v_string_cstr(const VString* self) {
+  if (!self) {
+    return "";
+  }
+
+  return v_string_is_external(self) ? self->u.external
+                                    : (const char*)(self + 1);
+}
+
+VUID_PKG bool v_string_eq(const VString* a, const VString* b) {
+  return (a == b) || v_cstr_eq(v_string_cstr(a), v_string_cstr(b));
+}
+
+VUID_PKG bool v_string_eq_cstr(const VString* a, const char* b) {
+  return v_cstr_eq(v_string_cstr(a), b);
+}
+
+VUID_PKG bool v_string_is_empty(const VString* self) {
+  return self ? (self->meta & ~(VUID_STRING_EXTERNAL_BIT)) == 0 : true;
+}
+
+VUID_PKG uint32_t v_string_size(const VString* self) {
+  return self ? self->meta & ~(VUID_STRING_EXTERNAL_BIT) : 0;
 }
 
 // Copyright (c) 2008-2009 Bjoern Hoehrmann <bjoern@hoehrmann.de>
@@ -2595,10 +2453,11 @@ static uint32_t v_utf8_decode(uint32_t* state, uint32_t* codep, uint32_t byte) {
 
 typedef struct VContext VContext;
 
-static void v_pre_render(VContext* ctx);
-static void v_post_render(VContext* ctx);
-static VTextureInfo* v_get_texture(VContext* ctx, uint32_t texture_id);
+static void v_ctx_pre_render(VContext* ctx);
+static void v_ctx_post_render(VContext* ctx);
+static VTextureInfo* v_ctx_get_texture(VContext* ctx, uint32_t texture_id);
 static void v_rasterize_text_node(VNode* node);
+static void v_ctx_render_data_sync(VContext* ctx);
 
 /* ============================================================
  * Internal context definition
@@ -2624,6 +2483,7 @@ struct VContext {
 
   int object_count[V_OBJECT_TYPE__COUNT];
   bool initialized;
+  bool needs_render;
 };
 
 static VContext g_context = {0};
@@ -2699,6 +2559,8 @@ VUID_API bool v_init(const VConfig* config) {
     goto error;
   }
 
+  v_ctx_render_data_sync(&g_context);
+
   return true;
 
 error:
@@ -2735,9 +2597,15 @@ VUID_API void v_update(int width, int height) {
 
 VUID_API void v_render(void) {
   V_CHECK_CONTEXT();
-  v_pre_render(&g_context);
-  v_node_render_root(&g_context.command_queue);
-  v_post_render(&g_context);
+  v_ctx_pre_render(&g_context);
+
+  if (g_context.needs_render) {
+    v_command_queue_clear(&g_context.command_queue);
+    v_node_render_root(&g_context.command_queue);
+    g_context.needs_render = false;
+
+    v_ctx_post_render(&g_context);
+  }
 }
 
 VUID_API VRenderData* v_get_render_data(void) {
@@ -2814,6 +2682,7 @@ VUID_API void v_process_events(void) {
   // TODO: check that this function is not called reentrantly or another
   // lifecycle function is called
   V_CHECK_CONTEXT();
+
   for (size_t i = 0; i < g_context.input_event_queue.size; i++) {
     VInputEvent* event = v_array_get_unchecked(&g_context.input_event_queue, i);
 
@@ -2872,19 +2741,19 @@ VUID_API VNode* v_get_node_by_id_fmt(const char* fmt, ...) {
     return NULL;
   }
 
-  VStringInternal id = v_stri_init();
-  VAllocator* allocator = &g_context.allocator;
+  // TODO: use a scratch buffer
+  char buf[VUID_MAX_NODE_ID_LENGTH + 1];
 
   va_list args;
   va_start(args, fmt);
-  v_stri_assign_vfmt(&id, allocator, fmt, args);
+  int result = vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
 
-  VNode* result = v_get_node_by_id(v_stri_str(&id));
+  if (result < 0 || result > VUID_MAX_NODE_ID_LENGTH) {
+    return NULL;
+  }
 
-  v_stri_drop(&id, allocator);
-
-  return result;
+  return v_get_node_by_id(buf);
 }
 
 VUID_API void v_set_popover_backdrop_color(VColor c) {
@@ -2895,6 +2764,11 @@ VUID_API void v_set_popover_backdrop_color(VColor c) {
 VColor v_get_popover_backdrop_color(void) {
   V_CHECK_CONTEXT((VColor){0});
   return g_context.node_module.popover_backdrop_color;
+}
+
+VUID_API VNode* v_get_focused_node(void) {
+  V_CHECK_CONTEXT(NULL);
+  return g_context.node_module.focused_node;
 }
 
 VUID_API bool v_add_image(const char* src) {
@@ -2968,6 +2842,12 @@ VUID_PKG bool v_ctx_intern_string(const char* str, VStaticString* out) {
   return v_string_pool_intern(&g_context.string_pool, str, out);
 }
 
+VUID_PKG void v_ctx_request_render(void) {
+  if (!g_context.needs_render) {
+    g_context.needs_render = true;
+  }
+}
+
 //
 // render stuff
 //
@@ -2995,35 +2875,25 @@ VUID_PKG uint32_t v_ctx_create_texture(VPixelFormat format,
 
 // TODO: this should not be public. fix image store design.
 VUID_PKG void v_ctx_destroy_texture(uint32_t texture_id) {
-  VTextureInfo* info = v_get_texture(&g_context, texture_id);
+  VTextureInfo* info = v_ctx_get_texture(&g_context, texture_id);
 
   if (info && info->state != V_TEXTURE_DESTROYED) {
     info->state = V_TEXTURE_DESTROYING;
   }
 }
 
-static void v_post_render(VContext* ctx) {
-  ctx->render_data.vertices = ctx->command_queue.vertices.items;
-  ctx->render_data.vertex_count = (uint32_t)ctx->command_queue.vertices.size;
-
-  ctx->render_data.indices = ctx->command_queue.indices.items;
-  ctx->render_data.index_count = (uint32_t)ctx->command_queue.indices.size;
-
-  ctx->render_data.commands = ctx->command_queue.commands.items;
-  ctx->render_data.command_count = (uint32_t)ctx->command_queue.commands.size;
-
-  ctx->render_data.textures = ctx->textures.items;
-  ctx->render_data.texture_count = (uint32_t)ctx->textures.size;
+static void v_ctx_post_render(VContext* ctx) {
+  v_ctx_render_data_sync(ctx);
 }
 
-static void v_pre_render(VContext* ctx) {
+static void v_ctx_pre_render(VContext* ctx) {
   VGlyphAtlas* atlas = &ctx->text_module.atlas;
 
   v_rasterize_text_node(ctx->node_module.root);
 
   // sync atlas texture state with the glyph atlas
   if (v_glyph_atlas_get_size(atlas) != ctx->atlas_last_size) {
-    VTextureInfo* info = v_get_texture(ctx, ctx->atlas_texture_id);
+    VTextureInfo* info = v_ctx_get_texture(ctx, ctx->atlas_texture_id);
     VUID_ASSERT(info);
     VImageBuffer pixel_buffer = v_glyph_atlas_get_pixel_buffer(atlas);
 
@@ -3036,21 +2906,40 @@ static void v_pre_render(VContext* ctx) {
 
     ctx->atlas_last_size = v_glyph_atlas_get_size(atlas);
     ctx->atlas_last_modified_count = v_glyph_atlas_get_modified_count(atlas);
+
+    v_ctx_request_render();
   } else if (v_glyph_atlas_get_modified_count(atlas) !=
              ctx->atlas_last_modified_count) {
-    VTextureInfo* info = v_get_texture(ctx, ctx->atlas_texture_id);
+    VTextureInfo* info = v_ctx_get_texture(ctx, ctx->atlas_texture_id);
     VUID_ASSERT(info);
 
     info->state = V_TEXTURE_UPDATING;
     info->pixels = v_glyph_atlas_get_pixel_buffer(atlas);
 
     ctx->atlas_last_modified_count = v_glyph_atlas_get_modified_count(atlas);
-  }
 
-  v_command_queue_clear(&ctx->command_queue);
+    v_ctx_request_render();
+  }
 }
 
-static VTextureInfo* v_get_texture(VContext* ctx, uint32_t texture_id) {
+static void v_ctx_render_data_sync(VContext* ctx) {
+  ctx->render_data.vertices = ctx->command_queue.vertices.items;
+  ctx->render_data.vertex_count = (uint32_t)ctx->command_queue.vertices.size;
+
+  ctx->render_data.indices = ctx->command_queue.indices.items;
+  ctx->render_data.index_count = (uint32_t)ctx->command_queue.indices.size;
+
+  ctx->render_data.commands = ctx->command_queue.commands.items;
+  ctx->render_data.command_count = (uint32_t)ctx->command_queue.commands.size;
+
+  ctx->render_data.textures = ctx->textures.items;
+  ctx->render_data.texture_count = (uint32_t)ctx->textures.size;
+
+  ctx->render_data.vertex_format = &ctx->command_queue.vertex_format;
+  ctx->render_data.index_format = ctx->command_queue.index_format;
+}
+
+static VTextureInfo* v_ctx_get_texture(VContext* ctx, uint32_t texture_id) {
   if (texture_id > 0) {
     for (uint32_t i = 0; i < ctx->textures.size; i++) {
       VTextureInfo* info = v_array_get_unchecked(&ctx->textures, i);
@@ -3083,12 +2972,33 @@ static void v_rasterize_text_node(VNode* node) {
 
 
 
+typedef struct VVertex {
+  float x, y;
+  float u, v;
+#ifdef VUID_VERTEX_COLOR_U8
+  uint8_t r, g, b, a;
+#else
+  float r, g, b, a;
+#endif
+} VVertex;
+
 static void v_command_queue_cmd_render(VCommandQueue* self,
                                        uint32_t texture_id,
                                        uint32_t vertex_offset,
                                        uint32_t vertex_count,
                                        uint32_t index_offset,
                                        uint32_t index_count);
+static uint32_t v_build_fan_indices(uint32_t* indices,
+                                    uint32_t indices_offset,
+                                    uint32_t anchor,
+                                    uint32_t perim_base,
+                                    uint32_t n_perim);
+static uint32_t v_build_skirt_indices(uint32_t* indices,
+                                      uint32_t indices_offset,
+                                      uint32_t core_base,
+                                      uint32_t fringe_base,
+                                      uint32_t n_perim,
+                                      bool inward);
 
 static inline void v_vertex_set(VVertex* self,
                                 float x,
@@ -3100,10 +3010,18 @@ static inline void v_vertex_set(VVertex* self,
   self->y = y;
   self->u = u;
   self->v = v;
+
+#ifdef VUID_VERTEX_COLOR_U8
   self->r = color.r;
   self->g = color.g;
   self->b = color.b;
   self->a = color.a;
+#else
+  self->r = (float)color.r / 255.f;
+  self->g = (float)color.g / 255.f;
+  self->b = (float)color.b / 255.f;
+  self->a = (float)color.a / 255.f;
+#endif
 }
 
 /* sets a vertex with position and color. uv is 0. */
@@ -3121,14 +3039,36 @@ static inline void v_vertex_set_xyrgbx(VVertex* self,
                                        VColor color,
                                        uint8_t alpha) {
   v_vertex_set(self, x, y, 0.0f, 0.0f, color);
+#ifdef VUID_VERTEX_COLOR_U8
   self->a = alpha;
+#else
+  self->a = alpha / 255.f;
+#endif
 }
 
 VUID_PKG bool v_command_queue_init(VCommandQueue* self, VAllocator* allocator) {
+  VDataFormat color_format;
+#ifdef VUID_VERTEX_COLOR_U8
+  color_format = V_DATA_FORMAT_U8;
+#else
+  color_format = V_DATA_FORMAT_F32;
+#endif
+  // TODO: make vertex layout configurable
   *self = (VCommandQueue){
       .vertices = v_array_init(allocator, sizeof(VVertex), 1024),
       .indices = v_array_init(allocator, sizeof(uint32_t), 1024),
       .commands = v_array_init(allocator, sizeof(VCommand), 256),
+      .vertex_format =
+          {
+              .xy = {V_DATA_FORMAT_F32, offsetof(VVertex, x)},
+              .uv = {V_DATA_FORMAT_F32, offsetof(VVertex, u)},
+              .r = {color_format, offsetof(VVertex, r)},
+              .g = {color_format, offsetof(VVertex, g)},
+              .b = {color_format, offsetof(VVertex, b)},
+              .a = {color_format, offsetof(VVertex, a)},
+              .size = sizeof(VVertex),
+          },
+      .index_format = V_DATA_FORMAT_U32,
   };
 
   return true;
@@ -3273,33 +3213,11 @@ VUID_PKG void v_command_queue_cmd_fill_rounded_rect(VCommandQueue* self,
   }
 
   /* triangulate core (fan) */
-  uint32_t ii = 0;
-  for (uint32_t i = 0; i < n_perim; i++) {
-    uint32_t next_i = (i + 1) % n_perim;
-    inds[ii++] = 0; /* anchor */
-    inds[ii++] = (perim_base + i);
-    inds[ii++] = (perim_base + next_i);
-  }
+  uint32_t ii = v_build_fan_indices(inds, 0, 0, perim_base, n_perim);
 
   /* triangulate fringe skirt (strip) */
   if (!skip_outer_fringe) {
-    for (uint32_t i = 0; i < n_perim; i++) {
-      uint32_t next_i = (i + 1) % n_perim;
-
-      uint32_t c0 = (perim_base + i);
-      uint32_t c1 = (perim_base + next_i);
-      uint32_t f0 = (fringe_base + i);
-      uint32_t f1 = (fringe_base + next_i);
-
-      /* triangle 1 */
-      inds[ii++] = c0;
-      inds[ii++] = f0;
-      inds[ii++] = f1;
-      /* triangle 2 */
-      inds[ii++] = c0;
-      inds[ii++] = f1;
-      inds[ii++] = c1;
-    }
+    v_build_skirt_indices(inds, ii, perim_base, fringe_base, n_perim, false);
   }
 
   /* emit render command (solid color, no texture)
@@ -3463,55 +3381,15 @@ VUID_PKG void v_command_queue_cmd_stroke_rounded_rect(VCommandQueue* self,
   uint32_t ii = 0;
 
   /* ring between outer and inner cores */
-  for (uint32_t i = 0; i < n_perim; i++) {
-    uint32_t next = (i + 1) % n_perim;
-    uint32_t o0 = (outer_base + i);
-    uint32_t o1 = (outer_base + next);
-    uint32_t in0 = (inner_base + i);
-    uint32_t in1 = (inner_base + next);
-
-    inds[ii++] = o0;
-    inds[ii++] = in0;
-    inds[ii++] = in1;
-
-    inds[ii++] = o0;
-    inds[ii++] = in1;
-    inds[ii++] = o1;
-  }
+  ii = v_build_skirt_indices(inds, ii, outer_base, inner_base, n_perim, false);
 
   /* outer skirt */
-  for (uint32_t i = 0; i < n_perim; i++) {
-    uint32_t next = (i + 1) % n_perim;
-    uint32_t c0 = (outer_base + i);
-    uint32_t c1 = (outer_base + next);
-    uint32_t f0 = (outer_fringe_base + i);
-    uint32_t f1 = (outer_fringe_base + next);
-
-    inds[ii++] = c0;
-    inds[ii++] = f0;
-    inds[ii++] = f1;
-
-    inds[ii++] = c0;
-    inds[ii++] = f1;
-    inds[ii++] = c1;
-  }
+  ii = v_build_skirt_indices(inds, ii, outer_base, outer_fringe_base, n_perim,
+                             false);
 
   /* inner skirt (stitched inward) */
-  for (uint32_t i = 0; i < n_perim; i++) {
-    uint32_t next = (i + 1) % n_perim;
-    uint32_t c0 = (inner_base + i);
-    uint32_t c1 = (inner_base + next);
-    uint32_t f0 = (inner_fringe_base + i);
-    uint32_t f1 = (inner_fringe_base + next);
-
-    inds[ii++] = c0;
-    inds[ii++] = f1;
-    inds[ii++] = f0;
-
-    inds[ii++] = c0;
-    inds[ii++] = c1;
-    inds[ii++] = f1;
-  }
+  ii = v_build_skirt_indices(inds, ii, inner_base, inner_fringe_base, n_perim,
+                             true);
 
   v_command_queue_cmd_render(self, 0, vertex_offset, vertex_count, index_offset,
                              index_count);
@@ -3567,8 +3445,9 @@ VUID_PKG bool v_command_queue_add_quad(VCommandQueue* self,
                                        float u1,
                                        float v1,
                                        VColor color) {
-  uint32_t vertex_offset = (uint32_t)self->vertices.size;
-  uint32_t index_offset = (uint32_t)self->indices.size;
+  static const uint32_t QUAD[] = {0, 1, 2, 0, 2, 3};
+  const uint32_t vertex_offset = (uint32_t)self->vertices.size;
+  const uint32_t index_offset = (uint32_t)self->indices.size;
 
   if (!v_array_push_n(&self->vertices, 4)) {
     return false;
@@ -3588,14 +3467,11 @@ VUID_PKG bool v_command_queue_add_quad(VCommandQueue* self,
   v_vertex_set(&vertex[3], quad->x, quad->y + quad->height, u0, v1, color);
 
   uint32_t* indices = v_array_get_unchecked(&self->indices, index_offset);
-  uint32_t vertex_index_base = self->cmd_vertex_index_base;
+  const uint32_t vertex_index_base = self->cmd_vertex_index_base;
 
-  indices[0] = vertex_index_base + 0;
-  indices[1] = vertex_index_base + 1;
-  indices[2] = vertex_index_base + 2;
-  indices[3] = vertex_index_base + 0;
-  indices[4] = vertex_index_base + 2;
-  indices[5] = vertex_index_base + 3;
+  for (size_t i = 0; i < VUID_ARRAY_LEN(QUAD); i++) {
+    indices[i] = vertex_index_base + QUAD[i];
+  }
 
   self->cmd_vertex_index_base += 4;
   self->batch_quad_count++;
@@ -3666,6 +3542,66 @@ static void v_command_queue_cmd_render(VCommandQueue* self,
   };
 
   v_array_push(&self->commands, &command);
+}
+
+/* Build indices for a triangle fan vertex set. */
+static uint32_t v_build_fan_indices(uint32_t* indices,
+                                    uint32_t indices_offset,
+                                    uint32_t anchor,
+                                    uint32_t perim_base,
+                                    uint32_t n_perim) {
+  uint32_t ii = indices_offset;
+
+  for (uint32_t i = 0; i < n_perim; i++) {
+    uint32_t next = (i + 1) % n_perim;
+    indices[ii++] = anchor;
+    indices[ii++] = (perim_base + i);
+    indices[ii++] = (perim_base + next);
+  }
+
+  return ii;
+}
+
+/*
+ * Build indices for a rounded rectangle skirt. The skirt can go outward for
+ * rounded rect fill and stroke shapes. The skirt can go inward for rounded rect
+ * stroke shapes.
+ */
+static uint32_t v_build_skirt_indices(uint32_t* indices,
+                                      uint32_t indices_offset,
+                                      uint32_t core_base,
+                                      uint32_t fringe_base,
+                                      uint32_t n_perim,
+                                      bool inward) {
+  uint32_t ii = indices_offset;
+
+  for (uint32_t i = 0; i < n_perim; i++) {
+    uint32_t next = (i + 1) % n_perim;
+    uint32_t c0 = (core_base + i);
+    uint32_t c1 = (core_base + next);
+    uint32_t f0 = (fringe_base + i);
+    uint32_t f1 = (fringe_base + next);
+
+    if (!inward) {
+      indices[ii++] = c0;
+      indices[ii++] = f0;
+      indices[ii++] = f1;
+
+      indices[ii++] = c0;
+      indices[ii++] = f1;
+      indices[ii++] = c1;
+    } else {
+      indices[ii++] = c0;
+      indices[ii++] = f1;
+      indices[ii++] = f0;
+
+      indices[ii++] = c0;
+      indices[ii++] = c1;
+      indices[ii++] = f1;
+    }
+  }
+
+  return ii;
 }
 
 
@@ -3803,9 +3739,9 @@ VUID_PKG void v_weak_ref_release(VWeakRef* weak_ref) {
 
 
 
-static VImage* v_image_new(VImageStore* self, const char* src);
+static VImage* v_image_new(VImageStore* self, VString* str);
 static VImage* v_image_new_mem(VImageStore* self,
-                               const char* src,
+                               VString* str,
                                VBuffer* file_buffer);
 static VImage* v_image_ref(VImage* image);
 static void v_image_unref(VImage* image);
@@ -3829,12 +3765,12 @@ VUID_PKG void v_image_store_drop(VImageStore* self) {
   v_image_hmap_drop(&self->images);
 }
 
-VUID_PKG VImage* v_image_store_acquire(VImageStore* self, const char* src) {
-  if (v_cstr_is_empty(src)) {
+VUID_PKG VImage* v_image_store_acquire(VImageStore* self, VString* src) {
+  if (v_string_is_empty(src)) {
     return NULL;
   }
 
-  VImageHashMapValue* value = v_image_store_get(self, src);
+  VImageHashMapValue* value = v_image_store_get(self, v_string_cstr(src));
 
   if (value) {
     return v_image_ref(value->image);
@@ -3864,7 +3800,10 @@ VUID_PKG bool v_image_store_persist(VImageStore* self, const char* src) {
     return true;
   }
 
-  VImage* image = v_image_new(self, src);
+  VString* src_as_string = v_string_from(self->allocator, src);
+  VImage* image = v_image_new(self, src_as_string);
+
+  v_string_unref(src_as_string);
 
   if (!image) {
     return false;
@@ -3898,7 +3837,10 @@ VUID_PKG bool v_image_store_persist_mem(VImageStore* self,
     return true;
   }
 
-  VImage* image = v_image_new_mem(self, src, buffer);
+  VString* src_as_string = v_string_from(self->allocator, src);
+  VImage* image = v_image_new_mem(self, src_as_string, buffer);
+
+  v_string_unref(src_as_string);
 
   if (!image) {
     return false;
@@ -3923,8 +3865,11 @@ VUID_PKG void v_image_store_remove(VImageStore* self, const char* src) {
 
   if (value) {
     value->persist = false;
-    v_image_clear(value->image);
+    v_image_ref(value->image);
     v_image_hmap_remove_by_value(&self->images, value);
+    // nodes might be holding this VImage. clear the contents, but leave src
+    v_image_clear(value->image);
+    v_image_unref(value->image);
   }
 }
 
@@ -3933,7 +3878,8 @@ VUID_PKG void v_image_store_release(VImageStore* self, VImage* image) {
     return;
   }
 
-  VImageHashMapValue* value = v_image_store_get(self, v_stri_str(&image->src));
+  VImageHashMapValue* value =
+      v_image_store_get(self, v_string_cstr(image->src));
 
   if (value == NULL || value->image != image) {
     v_image_unref(image);
@@ -3945,8 +3891,9 @@ VUID_PKG void v_image_store_release(VImageStore* self, VImage* image) {
       if (value->persist) {
         value->persist = false;
       } else {
-        v_image_hmap_remove(&self->images,
-                            (VImageHashMapKey){.src = v_stri_str(&image->src)});
+        v_image_hmap_remove(
+            &self->images,
+            (VImageHashMapKey){.src = v_string_cstr(image->src)});
       }
       v_image_unref(image);
     } else if (image->ref_count > 2) {
@@ -3971,9 +3918,14 @@ VUID_PKG uint32_t v_image_get_texture_id(const VImage* image) {
   return image ? image->texture_id : 0;
 }
 
-static VImage* v_image_new(VImageStore* self, const char* src) {
+static VImage* v_image_new(VImageStore* self, VString* src) {
+  if (v_string_is_empty(src)) {
+    return NULL;
+  }
+
   size_t file_data_size = 0;
-  uint8_t* file_data = v_file_read(self->allocator, src, &file_data_size);
+  uint8_t* file_data =
+      v_file_read(self->allocator, v_string_cstr(src), &file_data_size);
 
   if (!file_data) {
     return NULL;
@@ -3990,8 +3942,12 @@ static VImage* v_image_new(VImageStore* self, const char* src) {
 }
 
 static VImage* v_image_new_mem(VImageStore* self,
-                               const char* src,
+                               VString* src,
                                VBuffer* file_buffer) {
+  if (!src) {
+    return NULL;
+  }
+
   VImage* image = v_alloc_zero(self->allocator, sizeof(VImage));
 
   if (!image) {
@@ -4024,10 +3980,12 @@ static VImage* v_image_new_mem(VImageStore* self,
   }
 
   image->texture_id = texture_id;
-  image->src = v_stri_from_cstr(self->allocator, src);
-  image->src_hash = v_fnv1_hash(src);
+  image->src = src;
+  image->src_hash = v_fnv1_hash(v_string_cstr(image->src));
   image->width = image->buffer.width;
   image->height = image->buffer.height;
+
+  v_string_ref(image->src);
 
   return image;
 }
@@ -4053,7 +4011,7 @@ static void v_image_unref(VImage* image) {
       VImageStore* image_store = v_ctx_image_store();
 
       v_image_clear(image);
-      v_stri_drop(&image->src, image_store->allocator);
+      v_string_unref(image->src);
       v_free(image_store->allocator, image, sizeof(VImage));
       v_ctx_object_dec(V_OBJECT_TYPE_IMAGE);
     } else {
@@ -4100,13 +4058,13 @@ static uint32_t VImageHashMapKey_get_hash(const VImageHashMapKey* key) {
 static VImageHashMapKey VImageHashMapKey_from_value(
     const VImageHashMapValue* value) {
   return (VImageHashMapKey){
-      .src = v_stri_str(&value->image->src),
+      .src = v_string_cstr(value->image->src),
   };
 }
 
 static bool VImageHashMapValue_eq(const VImageHashMapKey* key,
                                   const VImageHashMapValue* value) {
-  return v_stri_eq_cstr(&value->image->src, key->src);
+  return v_string_eq_cstr(value->image->src, key->src);
 }
 
 static void VImageHashMapValue_drop(VImageHashMapValue* value) {
@@ -4152,7 +4110,7 @@ VTextLayout* v_text_layout_build(VAllocator* allocator,
                                  const VShapedGlyph* shaped,
                                  uint32_t shaped_count,
                                  const char* utf8,
-                                 const VFontFace* face,
+                                 const VFontMetrics* font_metrics,
                                  VTextWrap wrap,
                                  VAlignX talign,
                                  float wrap_width,
@@ -4213,7 +4171,7 @@ VTextLayout* v_text_layout_build(VAllocator* allocator,
   }
 
   // ---- Positioning pass ----
-  float baseline_y = face->ascent;
+  float baseline_y = font_metrics->ascent;
   float max_line_width = 0.0f;
 
   for (size_t li = 0; li < scratch_lines->size; li++) {
@@ -4250,7 +4208,7 @@ VTextLayout* v_text_layout_build(VAllocator* allocator,
 
     if (line_width > max_line_width)
       max_line_width = line_width;
-    baseline_y += face->line_height;
+    baseline_y += font_metrics->line_height;
   }
 
   // ---- Allocate the layout as a single contiguous block ----
@@ -4269,8 +4227,8 @@ VTextLayout* v_text_layout_build(VAllocator* allocator,
   layout->glyph_count = glyph_count;
   layout->line_count = line_count;
   layout->width = max_line_width;
-  layout->height = (float)line_count * face->line_height;
-  layout->ascent = face->ascent;
+  layout->height = (float)line_count * font_metrics->line_height;
+  layout->ascent = font_metrics->ascent;
   layout->glyphs = (VTextGlyph*)((uint8_t*)layout + sizeof(VTextLayout));
   layout->lines = (VTextLine*)((uint8_t*)layout->glyphs + glyphs_bytes);
   memcpy(layout->glyphs, scratch_glyphs->items, glyphs_bytes);
@@ -4639,6 +4597,13 @@ VUID_PKG bool v_font_data_is_legal_name(const char* name) {
   return !v_cstr_is_empty(name) && strlen(name) <= VUID_MAX_FONT_NAME_LENGTH;
 }
 
+VUID_PKG bool v_font_data_get_metrics(VFontData* self,
+                                      VFontMetrics* font_metrics) {
+  return v_te_get_font_metrics(self->text_engine, &self->font,
+                               &font_metrics->ascent, &font_metrics->descent,
+                               &font_metrics->line_height);
+}
+
 #if defined(VUID_TEXT_ENGINE_STB)
 
 
@@ -4871,7 +4836,6 @@ VUID_PKG bool v_text_module_init(VTextModule* self,
 
   // TODO: allocs can fail
   self->font_data = v_array_init(allocator, sizeof(void*), 4);
-  self->font_face_cache = v_font_face_map_init(allocator);
   self->scratch_shaped = v_array_init(allocator, sizeof(VShapedGlyph), 64);
   self->scratch_glyphs = v_array_init(allocator, sizeof(VTextGlyph), 64);
   self->scratch_lines = v_array_init(allocator, sizeof(VTextLine), 8);
@@ -4891,7 +4855,6 @@ VUID_PKG void v_text_module_drop(VTextModule* self) {
   }
 
   v_array_drop(&self->font_data);
-  v_font_face_map_drop(&self->font_face_cache);
   v_array_drop(&self->scratch_shaped);
   v_array_drop(&self->scratch_glyphs);
   v_array_drop(&self->scratch_lines);
@@ -4942,41 +4905,23 @@ VUID_PKG void v_text_module_remove_font(VTextModule* self, const char* name) {
     VFontData* data = v_array_get_ptr_unchecked(&self->font_data, i);
     if (v_cstr_eq(data->name.str, name)) {
       font = data;
-      // ok to remove the array entry, as this is an array of pointers
+      v_font_data_drop(font);
       v_array_remove(&self->font_data, i);
       break;
     }
   }
-
-  if (!font) {
-    return;
-  }
-
-  // TODO: n^2. use a scratch buffer to get the matching faces, then delete
-  for (size_t j = 0; j < self->font_face_cache.capacity; j++) {
-    if (self->font_face_cache.metadata[j] != 0) {
-      VFontFace* face = &self->font_face_cache.items[j];
-      if (face->font_id == font->font_id) {
-        v_font_face_map_remove_by_value(&self->font_face_cache, face);
-        // reset the loop, backshift delete may have moved items around!
-        j = 0;
-      }
-    }
-  }
-
-  v_font_data_drop(font);
 }
 
 VUID_PKG VTextLayout* v_text_module_create_layout(VTextModule* self,
                                                   uint16_t font_id,
                                                   uint16_t pixel_size,
-                                                  const VStringInternal* utf8,
+                                                  const VString* utf8,
                                                   VTextWrap wrap,
                                                   VAlignX talign,
                                                   float wrap_width) {
-  return v_text_module_create_layout_z(self, font_id, pixel_size,
-                                       v_stri_str(utf8), v_stri_size(utf8),
-                                       wrap, talign, wrap_width);
+  return v_text_module_create_layout_z(
+      self, font_id, pixel_size, v_string_cstr(utf8),
+      (size_t)v_string_size(utf8), wrap, talign, wrap_width);
 }
 
 VUID_PKG VTextLayout* v_text_module_create_layout_z(VTextModule* self,
@@ -4993,10 +4938,12 @@ VUID_PKG VTextLayout* v_text_module_create_layout_z(VTextModule* self,
     return NULL;
   }
 
-  VFontFace* face =
-      v_font_face_get_or_create(&self->text_engine, &self->font_face_cache,
-                                font_data, pixel_size, self->current_frame);
-  if (!face) {
+  if (!v_font_data_set_pixel_size(font_data, pixel_size)) {
+    return NULL;
+  }
+
+  VFontMetrics font_metrics;
+  if (!v_font_data_get_metrics(font_data, &font_metrics)) {
     return NULL;
   }
 
@@ -5009,8 +4956,8 @@ VUID_PKG VTextLayout* v_text_module_create_layout_z(VTextModule* self,
 
   VTextLayout* layout = v_text_layout_build(
       self->allocator, self->scratch_shaped.items,
-      (uint32_t)self->scratch_shaped.size, utf8, face, wrap, talign, wrap_width,
-      &self->scratch_glyphs, &self->scratch_lines);
+      (uint32_t)self->scratch_shaped.size, utf8, &font_metrics, wrap, talign,
+      wrap_width, &self->scratch_glyphs, &self->scratch_lines);
   if (layout) {
     layout->font_id = font_id;
     layout->pixel_size = pixel_size;
@@ -5081,78 +5028,6 @@ VUID_PKG void v_text_module_maybe_rasterize_glyphs(VTextModule* self,
   }
 
   layout->rasterized_at = modified_count;
-}
-
-
-
-
-/*
- * VFontFaceMap hash map implementation.
- * Key: VFontFaceKey (packed font_id + pixel_size).
- * Value: VFontFace (metric cache entry; no heap resources to free).
- */
-
-static uint32_t VFontFace_get_hash(const VFontFace* value) {
-  uint32_t packed = ((uint32_t)value->font_id << 16) | value->pixel_size;
-  return v_fnv1_hash_u32(packed);
-}
-
-static uint32_t VFontFaceKey_get_hash(const VFontFaceKey* key) {
-  return v_fnv1_hash_u32(key->packed);
-}
-
-static VFontFaceKey VFontFaceKey_from_value(const VFontFace* value) {
-  return (VFontFaceKey){
-      .packed = ((uint32_t)value->font_id << 16) | value->pixel_size,
-  };
-}
-
-static bool VFontFace_eq(const VFontFaceKey* key, const VFontFace* value) {
-  uint32_t packed = ((uint32_t)value->font_id << 16) | value->pixel_size;
-  return key->packed == packed;
-}
-
-static void VFontFace_drop(VFontFace* value) {
-  UNUSED(value);
-}
-
-VUID_HMAP_IMPL(VFontFaceMap, VFontFaceKey, VFontFace, v_font_face_map)
-
-VFontFace* v_font_face_get_or_create(VTextEngine* text_engine,
-                                     VFontFaceMap* cache,
-                                     VFontData* font_data,
-                                     uint16_t pixel_size,
-                                     uint32_t frame) {
-  // Always re-apply the pixel size so the FT face is at the right scale for
-  // shaping, which happens immediately after this call.
-  if (!v_font_data_set_pixel_size(font_data, pixel_size)) {
-    return NULL;
-  }
-
-  VFontFaceKey key = {
-      .packed = ((uint32_t)font_data->font_id << 16) | pixel_size,
-  };
-
-  VFontFace* cached = v_font_face_map_get(cache, key);
-  if (cached) {
-    cached->last_used_frame = frame;
-    return cached;
-  }
-
-  VFontFace face = {
-      .font_id = font_data->font_id,
-      .pixel_size = pixel_size,
-      .last_used_frame = frame,
-  };
-
-  if (!v_te_get_font_metrics(text_engine, &font_data->font, &face.ascent,
-                             &face.descent, &face.line_height)) {
-    return NULL;
-  }
-
-  VFontFaceMapResult result = v_font_face_map_put(cache, face);
-
-  return result.inserted ? result.ref : NULL;
 }
 
 
@@ -5861,14 +5736,17 @@ VUID_PKG bool v_te_shape(VTextEngine* self,
     VNode* node = v_style_get_owner(STYLE);                    \
                                                                \
     if (node) {                                                \
-      v_node_mark_dirty(node);                                 \
       if (g_style_props[PROPERTY].affects_text_style &&        \
-          node->tag == V_NODE_TEXT) {                          \
-        if (node->res.text_layout) {                           \
-          v_text_module_destroy_layout(v_ctx_text_module(),    \
-                                       node->res.text_layout); \
-          node->res.text_layout = NULL;                        \
-        }                                                      \
+          node->tag == V_NODE_TEXT && node->res.text_layout) { \
+        v_text_module_destroy_layout(v_ctx_text_module(),      \
+                                     node->res.text_layout);   \
+        node->res.text_layout = NULL;                          \
+      }                                                        \
+      if (g_style_props[PROPERTY].affects_layout) {            \
+        v_node_mark_dirty(node);                               \
+      }                                                        \
+      if (g_style_props[PROPERTY].affects_render) {            \
+        v_ctx_request_render();                                \
       }                                                        \
     }                                                          \
   } while (0)
@@ -5915,120 +5793,150 @@ static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
       .default_value.sizing = {V_SIZING_FIT, 0, 0},
       .set_fn.sizing = &vs_set_width,
       .get_fn.sizing = &vs_get_width,
+      .affects_layout = true,
     },
     [VS_HEIGHT] = {
       .tag = VSTAG_SIZING,
       .default_value.sizing = {V_SIZING_FIT, 0, 0},
       .set_fn.sizing = &vs_set_height,
       .get_fn.sizing = &vs_get_height,
+      .affects_layout = true,
     },
     [VS_DIRECTION] = {
       .tag = VSTAG_ENUM_DIRECTION,
       .default_value.direction = V_DIRECTION_ROW,
       .set_fn.direction = &vs_set_direction,
       .get_fn.direction = &vs_get_direction,
+      .affects_layout = true,
+    },
+    [VS_VISIBILITY] = {
+      .tag = VSTAG_ENUM_VISIBILITY,
+      .default_value.visibility = V_VISIBILITY_VISIBLE,
+      .set_fn.visibility = &vs_set_visibility,
+      .get_fn.visibility = &vs_get_visibility,
+      .affects_render = true,
     },
     [VS_WRAP] = {
       .tag = VSTAG_ENUM_WRAP,
       .default_value.wrap = V_WRAP_NONE,
       .set_fn.wrap = &vs_set_wrap,
       .get_fn.wrap = &vs_get_wrap,
+      .affects_layout = true,
     },
     [VS_XALIGN] = {
       .tag = VSTAG_ENUM_XALIGN,
       .default_value.xalign = V_ALIGN_X_LEFT,
       .set_fn.xalign = &vs_set_xalign,
       .get_fn.xalign = &vs_get_xalign,
+      .affects_layout = true,
     },
     [VS_YALIGN] = {
       .tag = VSTAG_ENUM_YALIGN,
       .default_value.yalign = V_ALIGN_Y_TOP,
       .set_fn.yalign = &vs_set_yalign,
       .get_fn.yalign = &vs_get_yalign,
+      .affects_layout = true,
     },
     [VS_TALIGN] = {
       .tag = VSTAG_ENUM_XALIGN,
       .default_value.talign = V_ALIGN_X_LEFT,
       .set_fn.xalign = &vs_set_talign,
       .get_fn.xalign = &vs_get_talign,
+      // TODO: VTextLayout needs to change to make this a render only prop
+      .affects_layout = true,
+      .affects_text_style = true,
     },
     [VS_TEXT_WRAP] = {
       .tag = VSTAG_ENUM_TEXT_WRAP,
       .default_value.text_wrap = V_TEXT_WRAP_WRAP,
       .set_fn.text_wrap = &vs_set_text_wrap,
       .get_fn.text_wrap = &vs_get_text_wrap,
+      .affects_layout = true,
+      .affects_text_style = true,
     },
     [VS_OVERFLOW] = {
       .tag = VSTAG_ENUM_OVERFLOW,
       .default_value.overflow = V_OVERFLOW_VISIBLE,
       .set_fn.overflow = &vs_set_overflow,
       .get_fn.overflow = &vs_get_overflow,
+      .affects_layout = true,
     },
     [VS_GAP] = {
       .tag = VSTAG_UINT,
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_gap,
       .get_fn.uint = &vs_get_gap,
+      .affects_layout = true,
     },
     [VS_PADDING_TOP] = {
       .tag = VSTAG_UINT,
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_padding_top,
       .get_fn.uint = &vs_get_padding_top,
+      .affects_layout = true,
     },
     [VS_PADDING_RIGHT] = {
       .tag = VSTAG_UINT,
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_padding_right,
       .get_fn.uint = &vs_get_padding_right,
+      .affects_layout = true,
     },
     [VS_PADDING_BOTTOM] = {
       .tag = VSTAG_UINT,
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_padding_bottom,
       .get_fn.uint = &vs_get_padding_bottom,
+      .affects_layout = true,
     },
     [VS_PADDING_LEFT] = {
       .tag = VSTAG_UINT,
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_padding_left,
       .get_fn.uint = &vs_get_padding_left,
+      .affects_layout = true,
     },
     [VS_BORDER_TOP] = {
       .tag = VSTAG_UINT,
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_border_top,
       .get_fn.uint = &vs_get_border_top,
+      .affects_layout = true,
     },
     [VS_BORDER_RIGHT] = {
       .tag = VSTAG_UINT,
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_border_right,
       .get_fn.uint = &vs_get_border_right,
+      .affects_layout = true,
     },
     [VS_BORDER_BOTTOM] = {
       .tag = VSTAG_UINT,
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_border_bottom,
       .get_fn.uint = &vs_get_border_bottom,
+      .affects_layout = true,
     },
     [VS_BORDER_LEFT] = {
       .tag = VSTAG_UINT,
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_border_left,
       .get_fn.uint = &vs_get_border_left,
+      .affects_layout = true,
     },
     [VS_BORDER_RADIUS] = {
       .tag = VSTAG_UINT,
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_border_radius,
       .get_fn.uint = &vs_get_border_radius,
+      .affects_render = true,
     },
     [VS_FONT] = {
       .tag = VSTAG_STRING,
       .default_value.str = "",
       .set_fn.str = &vs_set_font,
       .get_fn.str = &vs_get_font,
+      .affects_layout = true,
       .affects_text_style = true,
     },
     [VS_FONT_SIZE] = {
@@ -6036,6 +5944,7 @@ static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_font_size,
       .get_fn.uint = &vs_get_font_size,
+      .affects_layout = true,
       .affects_text_style = true,
     },
     [VS_SCROLLBAR_WIDTH] = {
@@ -6043,120 +5952,140 @@ static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_scrollbar_width,
       .get_fn.uint = &vs_get_scrollbar_width,
+      .affects_layout = true,
     },
     [VS_SCROLLBAR_BORDER_RADIUS] = {
       .tag = VSTAG_UINT,
       .default_value.uint = 0,
       .set_fn.uint = &vs_set_scrollbar_border_radius,
       .get_fn.uint = &vs_get_scrollbar_border_radius,
+      .affects_render = true,
     },
     [VS_BACKGROUND] = {
       .tag = VSTAG_COLOR,
       .default_value.color = {0, 0, 0, 0},
       .set_fn.color = &vs_set_background,
       .get_fn.color = &vs_get_background,
+      .affects_render = true,
     },
     [VS_COLOR] = {
       .tag = VSTAG_COLOR,
       .default_value.color = {0, 0, 0, 0},
       .set_fn.color = &vs_set_color,
       .get_fn.color = &vs_get_color,
+      .affects_render = true,
     },
     [VS_BORDER_COLOR] = {
       .tag = VSTAG_COLOR,
       .default_value.color = {0, 0, 0, 0},
       .set_fn.color = &vs_set_border_color,
       .get_fn.color = &vs_get_border_color,
+      .affects_render = true,
     },
     [VS_SCROLLBAR_THUMB] = {
       .tag = VSTAG_COLOR,
       .default_value.color = {0, 0, 0, 0},
       .set_fn.color = &vs_set_scrollbar_thumb,
       .get_fn.color = &vs_get_scrollbar_thumb,
+      .affects_render = true,
     },
     [VS_SCROLLBAR_THUMB_HOVER] = {
       .tag = VSTAG_COLOR,
       .default_value.color = {0, 0, 0, 0},
       .set_fn.color = &vs_set_scrollbar_thumb_hover,
       .get_fn.color = &vs_get_scrollbar_thumb_hover,
+      .affects_render = true,
     },
     [VS_ANCHOR_TO] = {
       .tag = VSTAG_ENUM_ANCHOR_TO,
       .default_value.anchor_to = V_ANCHOR_TO_PARENT,
       .set_fn.anchor_to = &vs_set_anchor_to,
       .get_fn.anchor_to = &vs_get_anchor_to,
+      .affects_layout = true,
     },
     [VS_ANCHOR_ATTACH_POINT_X] = {
       .tag = VSTAG_ENUM_ATTACH_POINT_X,
       .default_value.attach_point_x = V_ATTACH_POINT_X_LEFT,
       .set_fn.attach_point_x = &vs_set_anchor_attach_point_x,
       .get_fn.attach_point_x = &vs_get_anchor_attach_point_x,
+      .affects_layout = true,
     },
     [VS_ANCHOR_ATTACH_POINT_Y] = {
       .tag = VSTAG_ENUM_ATTACH_POINT_Y,
       .default_value.attach_point_y = V_ATTACH_POINT_Y_TOP,
       .set_fn.attach_point_y = &vs_set_anchor_attach_point_y,
       .get_fn.attach_point_y = &vs_get_anchor_attach_point_y,
+      .affects_layout = true,
     },
     [VS_ATTACH_POINT_X] = {
       .tag = VSTAG_ENUM_ATTACH_POINT_X,
       .default_value.attach_point_x = V_ATTACH_POINT_X_LEFT,
       .set_fn.attach_point_x = &vs_set_attach_point_x,
       .get_fn.attach_point_x = &vs_get_attach_point_x,
+      .affects_layout = true,
     },
     [VS_ATTACH_POINT_Y] = {
       .tag = VSTAG_ENUM_ATTACH_POINT_Y,
       .default_value.attach_point_y = V_ATTACH_POINT_Y_TOP,
       .set_fn.attach_point_y = &vs_set_attach_point_y,
       .get_fn.attach_point_y = &vs_get_attach_point_y,
+      .affects_layout = true,
     },
     [VS_ATTACH_POINT_OFFSET_X] = {
       .tag = VSTAG_FLOAT,
       .default_value.fval = 0,
       .set_fn.fval = &vs_set_attach_point_offset_x,
       .get_fn.fval = &vs_get_attach_point_offset_x,
+      .affects_layout = true,
     },
     [VS_ATTACH_POINT_OFFSET_Y] = {
       .tag = VSTAG_FLOAT,
       .default_value.fval = 0,
       .set_fn.fval = &vs_set_attach_point_offset_y,
       .get_fn.fval = &vs_get_attach_point_offset_y,
+      .affects_layout = true,
     },
     [VS_ASPECT_RATIO] = {
       .tag = VSTAG_FLOAT,
       .default_value.fval = 0,
       .set_fn.fval = &vs_set_aspect_ratio,
       .get_fn.fval = &vs_get_aspect_ratio,
+      .affects_layout = true,
     },
     [VS_POSITION] = {
       .tag = VSTAG_ENUM_POSITION,
       .default_value.position = V_POSITION_STATIC,
       .set_fn.position = &vs_set_position,
       .get_fn.position = &vs_get_position,
+      .affects_layout = true,
     },
     [VS_TOP] = {
       .tag = VSTAG_FLOAT,
       .default_value.fval = 0,
       .set_fn.fval = &vs_set_top,
       .get_fn.fval = &vs_get_top,
+      .affects_layout = true,
     },
     [VS_RIGHT] = {
       .tag = VSTAG_FLOAT,
       .default_value.fval = 0,
       .set_fn.fval = &vs_set_right,
       .get_fn.fval = &vs_get_right,
+      .affects_layout = true,
     },
     [VS_BOTTOM] = {
       .tag = VSTAG_FLOAT,
       .default_value.fval = 0,
       .set_fn.fval = &vs_set_bottom,
       .get_fn.fval = &vs_get_bottom,
+      .affects_layout = true,
     },
     [VS_LEFT] = {
       .tag = VSTAG_FLOAT,
       .default_value.fval = 0,
       .set_fn.fval = &vs_set_left,
       .get_fn.fval = &vs_get_left,
+      .affects_layout = true,
     },
     // clang-format on
 };
@@ -6177,6 +6106,7 @@ VUID_PKG const VStylePropertyMeta* v_style_get_prop_meta(
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_WIDTH, width, VSizing, v_sizing_eq, sizing)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_HEIGHT, height, VSizing, v_sizing_eq, sizing)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_DIRECTION, direction, VDirection, VUID_EQ, direction)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_VISIBILITY, visibility, VVisibility, VUID_EQ, visibility)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_WRAP, wrap, VWrap, VUID_EQ, wrap)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_XALIGN, xalign, VAlignX, VUID_EQ, xalign)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_YALIGN, yalign, VAlignY, VUID_EQ, yalign)
@@ -6462,26 +6392,31 @@ static void v_style_destructor(VStyle* style) {
 
 
 /*
- * TODO: there are a lot of checks for visible, popover and absolute as we go
- * through the passes because these nodes are deferred to a later pass. these
- * are messy checks that happen over and over. need to find a cleaner way to
- * handle this. maybe a flag or something..
- *
  * TODO: right now styles are not computed or resolved until needed in the
  * layout pass this is making the code more complicated and less efficient. I
  * have not decided the best way to handle this.
  */
 
+/*
+ * Iterate over child nodes that are "in-flow" (visible, non-popover,
+ * non-absolute).
+ * - ALWAYS use a braced body.
+ * - break and continue function as expected within the loop body.
+ */
+#define v_foreach_flow_child(NODE, CHILD) \
+  v_foreach_child(NODE, CHILD) if (v_is_in_flow(CHILD))
+
 static inline bool v_style__is_absolute(const VStyle* style) {
   return vs_get_position(style) == V_POSITION_ABSOLUTE;
 }
 
-static inline bool v_node__is_absolute(const VNode* child) {
-  return child->style ? v_style__is_absolute(child->style) : false;
+static inline bool v_is_in_flow(const VNode* node) {
+  return v_node_is_visible(node) && node->popover_type == V_POPOVER_NONE &&
+         vs_get_position(node->style) != V_POSITION_ABSOLUTE;
 }
 
 static VSize v__compute_text_pref_size(VNode* node, const VStyle* node_style) {
-  if (v_stri_is_empty(&node->res_data.text) || !vs_has_font(node_style) ||
+  if (v_string_is_empty(node->res_data.text) || !vs_has_font(node_style) ||
       !vs_has_font_size(node_style)) {
     return (VSize){0, 0};
   }
@@ -6501,7 +6436,7 @@ static VSize v__compute_text_pref_size(VNode* node, const VStyle* node_style) {
   }
 
   text_layout = v_text_module_create_layout(
-      text_module, font_id, vs_get_font_size(node_style), &node->res_data.text,
+      text_module, font_id, vs_get_font_size(node_style), node->res_data.text,
       V_TEXT_WRAP_NO_WRAP, vs_get_talign(node_style), 0.0f);
 
   v_node_set_text_layout(node, text_layout);
@@ -6516,6 +6451,13 @@ static VSize v__compute_image_pref_size(VNode* node) {
 // Pass 1: Width Sizing (Bottom-up)
 static void v_layout_pass1_width(VNode* node) {
   // note: first call is with root, which is always visible.
+
+  if (!v_node_is_dirty(node)) {
+    // this is a bottom-up pass. mark dirty propagates up. if this
+    // node is clean, the descendants are clean as well and we can
+    // skip the rest of this pass.
+    return;
+  }
 
   const VStyle* style = v_node_get_style_or_empty(node);
 
@@ -6552,14 +6494,7 @@ static void v_layout_pass1_width(VNode* node) {
     pref_w = 0;
 
     if (dir == V_DIRECTION_ROW) {
-      v_foreach_child(node, child) {
-        if (!v_node_is_visible(child) ||
-            child->popover_type != V_POPOVER_NONE) {
-          continue;
-        }
-        if (v_node__is_absolute(child)) {
-          continue;
-        }
+      v_foreach_flow_child(node, child) {
         visible_children++;
         // For wrap, min_width is the widest single child (worst case: one per
         // row). pref_width is still the sum (preferred: all on one row).
@@ -6579,17 +6514,38 @@ static void v_layout_pass1_width(VNode* node) {
         pref_w += total_gap;
       }
     } else {
-      // COLUMN: width is the maximum of children
-      v_foreach_child(node, child) {
-        if (!v_node_is_visible(child) ||
-            child->popover_type != V_POPOVER_NONE) {
-          continue;
+      if (wrap == V_WRAP_NONE) {
+        // COLUMN: width is the maximum of children
+        v_foreach_flow_child(node, child) {
+          min_w = fmaxf(min_w, child->min_width);
+          pref_w = fmaxf(pref_w, child->pref_width);
         }
-        if (v_node__is_absolute(child)) {
-          continue;
+      } else {
+        // COLUMN_WRAP: preferred width is the sum of column widths. Uses
+        // children's pref_height from the previous layout to simulate column
+        // breaks; converges after the first frame. If height is not FIXED the
+        // column-break point is unknown, so falls back to single-column max.
+        const VSizing sh = vs_get_height(style);
+        const float extra_h = v_style_box_inset_height(style);
+        const float col_inner_h = (sh.tag == V_SIZING_FIXED)
+                                      ? fmaxf(0.0f, sh.min - extra_h)
+                                      : FLT_MAX;
+        const float gap = vs_get_gap(style);
+        float current_col_h = 0.0f;
+        float current_col_pref_w = 0.0f;
+
+        v_foreach_flow_child(node, child) {
+          min_w = fmaxf(min_w, child->min_width);
+          if (current_col_h > 0.0f &&
+              current_col_h + child->pref_height > col_inner_h) {
+            pref_w += current_col_pref_w + gap;  // completed column + gap
+            current_col_h = 0.0f;
+            current_col_pref_w = 0.0f;
+          }
+          current_col_h += child->pref_height + gap;
+          current_col_pref_w = fmaxf(current_col_pref_w, child->pref_width);
         }
-        min_w = fmaxf(min_w, child->min_width);
-        pref_w = fmaxf(pref_w, child->pref_width);
+        pref_w += current_col_pref_w;  // last column (no trailing gap)
       }
     }
   }
@@ -6633,18 +6589,44 @@ static void v_layout_pass1_width(VNode* node) {
 }
 
 // Pass 2: Width Distribution (Top-down)
-static void v_layout_pass2_width_dist(VNode* node, float width) {
+static void v_layout_pass2_width_dist(VNode* node,
+                                      float width,
+                                      float root_width) {
   // note: first call is with root, which is always visible.
+
+  if (!v_node_is_dirty(node)) {
+    // on float compare: node->bounds is set in a previous layout pass.
+    // despite floats lacking precision, the layout computation is
+    // deterministic. if the new computation EXACTLY matches the previous
+    // one, then we conclude the dimension has not changed.
+    if (node->bounds.width == width) {
+      // if this node is not dirty and its dimension has not changed, its
+      // children do not need layout and we can skip the rest of this pass.
+      return;
+    }
+
+    // the node is not dirty but its dimension changed. pass5 will need
+    // to run on this node to ensure positioning is correct. mark just
+    // this node dirty. the dirty is not propagated up the tree because
+    // all scenarios that bring us here mean the parent is dirty.
+    //
+    // TODO: we should assert parent is dirty here.
+    v_node_set_flag(node, V_NODEFLAG_DIRTY);
+  }
 
   node->bounds.width = width;
 
   int visible_children = 0;
+  float fixed_w = 0;
+  int grow_count = 0;
 
   // 1: visible popovers need a pass2 for their children
   // 2: absolute children get their width resolved out-of-flow
-  // 3: count visible, non-popover, non-absolute children
+  // 3: count visible, non-popover, non-absolute children; tally ROW grow/fixed
   const VStyle* style = v_node_get_style_or_empty(node);
   const float inner_w = width - v_style_box_inset_width(style);
+  const VDirection dir = vs_get_direction(style);
+  const float gap = vs_get_gap(style);
 
   v_foreach_child(node, child) {
     if (v_node_is_visible(child)) {
@@ -6653,13 +6635,12 @@ static void v_layout_pass2_width_dist(VNode* node, float width) {
 
       if (child->popover_type != V_POPOVER_NONE) {
         if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
-          cw = (vs_get_anchor_to(child_style) == V_ANCHOR_TO_ROOT)
-                   ? v_root()->bounds.width
-                   : width;
+          cw = (vs_get_anchor_to(child_style) == V_ANCHOR_TO_ROOT) ? root_width
+                                                                   : width;
         } else {
           cw = child->pref_width;
         }
-        v_layout_pass2_width_dist(child, cw);
+        v_layout_pass2_width_dist(child, cw, root_width);
       } else if (v_style__is_absolute(child_style)) {
         const VSizingTag wtag = vs__get_width_tag(child_style);
         if (wtag == V_SIZING_GROW) {
@@ -6671,37 +6652,25 @@ static void v_layout_pass2_width_dist(VNode* node, float width) {
         } else {
           cw = child->pref_width;
         }
-        v_layout_pass2_width_dist(child, cw);
+        v_layout_pass2_width_dist(child, cw, root_width);
       } else {
         visible_children++;
+        if (dir == V_DIRECTION_ROW) {
+          if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
+            grow_count++;
+          } else {
+            fixed_w += child->pref_width;
+          }
+        }
       }
     }
   }
 
-  if (visible_children == 0)
+  if (visible_children == 0) {
     return;
-
-  const VDirection dir = vs_get_direction(style);
-  const float gap = vs_get_gap(style);
+  }
 
   if (dir == V_DIRECTION_ROW) {
-    float fixed_w = 0;
-    int grow_count = 0;
-    v_foreach_child(node, child) {
-      if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
-        continue;
-
-      const VStyle* child_style = v_node_get_style_or_empty(child);
-
-      if (v_style__is_absolute(child_style))
-        continue;
-
-      if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
-        grow_count++;
-      } else {
-        fixed_w += child->pref_width;
-      }
-    }
     fixed_w += (visible_children - 1) * gap;
 
     // Multi-round distribution: clamp GROW children that can't receive their
@@ -6710,31 +6679,27 @@ static void v_layout_pass2_width_dist(VNode* node, float width) {
     int unclamped = grow_count;
     float clamped_total = 0;
     for (int round = 0; round < grow_count; round++) {
-      if (unclamped == 0)
+      if (unclamped == 0) {
         break;
+      }
       const float per_grow =
           fmaxf(0.0f, (inner_w - fixed_w - clamped_total) / unclamped);
       int new_unclamped = 0;
       float new_clamped = 0;
-      v_foreach_child(node, child) {
-        if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
-          continue;
-
+      v_foreach_flow_child(node, child) {
         const VStyle* child_style = v_node_get_style_or_empty(child);
-
-        if (v_style__is_absolute(child_style))
+        if (vs__get_width_tag(child_style) != V_SIZING_GROW) {
           continue;
-        if (vs__get_width_tag(child_style) != V_SIZING_GROW)
-          continue;
-
+        }
         if (child->min_width > per_grow) {
           new_clamped += child->min_width;
         } else {
           new_unclamped++;
         }
       }
-      if (new_unclamped == unclamped)
+      if (new_unclamped == unclamped) {
         break;
+      }
       unclamped = new_unclamped;
       clamped_total = new_clamped;
     }
@@ -6744,40 +6709,27 @@ static void v_layout_pass2_width_dist(VNode* node, float width) {
             ? fmaxf(0.0f, (inner_w - fixed_w - clamped_total) / unclamped)
             : 0.0f;
 
-    v_foreach_child(node, child) {
-      if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
-        continue;
-
+    v_foreach_flow_child(node, child) {
       const VStyle* child_style = v_node_get_style_or_empty(child);
-
-      if (v_style__is_absolute(child_style))
-        continue;
-
       float cw;
       if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
         cw = fmaxf(child->min_width, grow_w);
       } else {
         cw = child->pref_width;
       }
-      v_layout_pass2_width_dist(child, cw);
+      v_layout_pass2_width_dist(child, cw, root_width);
     }
   } else {
     // COLUMN
-    v_foreach_child(node, child) {
-      if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
-        continue;
-
+    v_foreach_flow_child(node, child) {
       const VStyle* child_style = v_node_get_style_or_empty(child);
-
-      if (v_style__is_absolute(child_style))
-        continue;
       float cw;
       if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
         cw = inner_w;
       } else {
         cw = child->pref_width;
       }
-      v_layout_pass2_width_dist(child, cw);
+      v_layout_pass2_width_dist(child, cw, root_width);
     }
   }
 }
@@ -6785,6 +6737,13 @@ static void v_layout_pass2_width_dist(VNode* node, float width) {
 // Pass 3: Height Sizing (Bottom-up)
 static void v_layout_pass3_height(VNode* node) {
   // note: first call is with root, which is always visible.
+
+  if (!v_node_is_dirty(node)) {
+    // this is a bottom-up pass. mark dirty propagates up. if this
+    // node is clean, the descendants are clean as well and we can
+    // skip the rest of this pass.
+    return;
+  }
 
   v_foreach_child(node, child) {
     if (v_node_is_visible(child)) {
@@ -6799,8 +6758,8 @@ static void v_layout_pass3_height(VNode* node) {
   if (node->tag == V_NODE_TEXT) {
     const VStyle* style_for_text = v_node_get_style_or_empty(node);
 
-    if (!v_stri_is_empty(&node->res_data.text) && vs_has_font(style_for_text) &&
-        vs_has_font_size(style_for_text)) {
+    if (!v_string_is_empty(node->res_data.text) &&
+        vs_has_font(style_for_text) && vs_has_font_size(style_for_text)) {
       // TODO: for now, use the snapped width to measure
       const float inner_w = v_snap_to_grid_dpr(node->bounds.width) -
                             v_style_box_inset_width(style_for_text);
@@ -6819,7 +6778,7 @@ static void v_layout_pass3_height(VNode* node) {
 
           text_layout = v_text_module_create_layout(
               text_module, font_id, vs_get_font_size(style_for_text),
-              &node->res_data.text, V_TEXT_WRAP_WRAP,
+              node->res_data.text, V_TEXT_WRAP_WRAP,
               vs_get_talign(style_for_text), inner_w);
 
           if (text_layout) {
@@ -6848,11 +6807,7 @@ static void v_layout_pass3_height(VNode* node) {
     int visible_children = 0;
 
     if (dir == V_DIRECTION_ROW && wrap == V_WRAP_NONE) {
-      v_foreach_child(node, child) {
-        if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
-          continue;
-        if (v_node__is_absolute(child))
-          continue;
+      v_foreach_flow_child(node, child) {
         visible_children++;
         cross_pref = fmaxf(cross_pref, child->pref_height);
         cross_min = fmaxf(cross_min, child->min_height);
@@ -6860,11 +6815,7 @@ static void v_layout_pass3_height(VNode* node) {
       min_h = cross_min;
       pref_h = cross_pref;
     } else if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_NONE) {
-      v_foreach_child(node, child) {
-        if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
-          continue;
-        if (v_node__is_absolute(child))
-          continue;
+      v_foreach_flow_child(node, child) {
         visible_children++;
         main_min += child->min_height;
         main_pref += child->pref_height;
@@ -6885,11 +6836,7 @@ static void v_layout_pass3_height(VNode* node) {
       const float inner_w = node->bounds.width - v_style_box_inset_width(style);
       const float gap = vs_get_gap(style);
 
-      v_foreach_child(node, child) {
-        if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
-          continue;
-        if (v_node__is_absolute(child))
-          continue;
+      v_foreach_flow_child(node, child) {
         if (current_row_w > 0 &&
             current_row_w + child->bounds.width > inner_w) {
           total_h += current_row_h + gap;
@@ -6912,11 +6859,7 @@ static void v_layout_pass3_height(VNode* node) {
       const float gap = vs_get_gap(style);
       float current_col_h = 0;
 
-      v_foreach_child(node, child) {
-        if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
-          continue;
-        if (v_node__is_absolute(child))
-          continue;
+      v_foreach_flow_child(node, child) {
         if (current_col_h > 0 && current_col_h + child->pref_height > inner_h) {
           current_col_h = 0;
         }
@@ -6969,19 +6912,62 @@ static void v_layout_pass3_height(VNode* node) {
   }
 }
 
+static void v_layout_pass4_height_dist(VNode* node,
+                                       float height);  // forward decl
+
+// Assign row_h to each flow child in [start, end) along the sibling list.
+// Pass end=NULL to flush to the end of the list (last row).
+static void v__flush_row(VNode* start, VNode* end, float row_h) {
+  for (VNode* c = start; c != NULL && c != end; c = v_node_next_sibling(c)) {
+    if (!v_is_in_flow(c)) {
+      continue;
+    }
+    const VStyle* cs = v_node_get_style_or_empty(c);
+    const float ch =
+        (vs__get_height_tag(cs) == V_SIZING_GROW) ? row_h : c->pref_height;
+    v_layout_pass4_height_dist(c, ch);
+  }
+}
+
 // Pass 4: Height Distribution (Top-down)
 static void v_layout_pass4_height_dist(VNode* node, float height) {
   // note: first call is with root, which is always visible.
 
+  if (!v_node_is_dirty(node)) {
+    // on float compare: node->bounds is set in a previous layout pass.
+    // despite floats lacking precision, the layout computation is
+    // deterministic. if the new computation EXACTLY matches the previous
+    // one, then we conclude the dimension has not changed.
+    if (node->bounds.height == height) {
+      // if this node is not dirty and its dimension has not changed, its
+      // children do not need layout and we can skip the rest of this pass.
+      return;
+    }
+
+    // the node is not dirty but its dimension changed. pass5 will need
+    // to run on this node to ensure positioning is correct. mark just
+    // this node dirty. the dirty is not propagated up the tree because
+    // all scenarios that bring us here mean the parent is dirty.
+    //
+    // TODO: we should assert parent is dirty here.
+    v_node_set_flag(node, V_NODEFLAG_DIRTY);
+  }
+
   node->bounds.height = height;
 
   int visible_children = 0;
+  float fixed_h = 0;
+  int grow_count = 0;
 
   // 1: visible popovers need a pass4 for their children
   // 2: absolute children get their height resolved out-of-flow
-  // 3: count visible, non-popover, non-absolute children
+  // 3: count visible, non-popover, non-absolute children; tally COLUMN
+  // grow/fixed
   const VStyle* style = v_node_get_style_or_empty(node);
   const float inner_h = height - v_style_box_inset_height(style);
+  const VDirection dir = vs_get_direction(style);
+  const VWrap wrap = vs_get_wrap(style);
+  const float gap = vs_get_gap(style);
 
   v_foreach_child(node, child) {
     if (v_node_is_visible(child)) {
@@ -7012,39 +6998,23 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
         v_layout_pass4_height_dist(child, ch);
       } else {
         visible_children++;
+        if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_NONE) {
+          if (vs__get_height_tag(child_style) == V_SIZING_GROW &&
+              !vs_has_aspect_ratio(child_style)) {
+            grow_count++;
+          } else {
+            fixed_h += child->pref_height;
+          }
+        }
       }
     }
   }
 
-  if (visible_children == 0)
+  if (visible_children == 0) {
     return;
-
-  const VDirection dir = vs_get_direction(style);
-  const VWrap wrap = vs_get_wrap(style);
-  const float gap = vs_get_gap(style);
+  }
 
   if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_NONE) {
-    float fixed_h = 0;
-    int grow_count = 0;
-    v_foreach_child(node, child) {
-      if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE)
-        continue;
-
-      const VStyle* child_style = v_node_get_style_or_empty(child);
-
-      if (v_style__is_absolute(child_style))
-        continue;
-
-      if (vs__get_height_tag(child_style) == V_SIZING_GROW) {
-        if (vs_has_aspect_ratio(child_style)) {
-          fixed_h += child->pref_height;
-        } else {
-          grow_count++;
-        }
-      } else {
-        fixed_h += child->pref_height;
-      }
-    }
     fixed_h += (visible_children - 1) * gap;
 
     int unclamped = grow_count;
@@ -7057,18 +7027,8 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
           fmaxf(0.0f, (inner_h - fixed_h - clamped_total) / unclamped);
       int new_unclamped = 0;
       float new_clamped = 0;
-      v_foreach_child(node, child) {
-        if (!v_node_is_visible(child) ||
-            child->popover_type != V_POPOVER_NONE) {
-          continue;
-        }
-
+      v_foreach_flow_child(node, child) {
         const VStyle* child_style = v_node_get_style_or_empty(child);
-
-        if (v_style__is_absolute(child_style)) {
-          continue;
-        }
-
         if (vs__get_height_tag(child_style) != V_SIZING_GROW) {
           continue;
         }
@@ -7092,19 +7052,10 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
         (unclamped > 0)
             ? fmaxf(0.0f, (inner_h - fixed_h - clamped_total) / unclamped)
             : 0.0f;
-    float ch;
 
-    v_foreach_child(node, child) {
-      if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE) {
-        continue;
-      }
-
+    v_foreach_flow_child(node, child) {
       const VStyle* child_style = v_node_get_style_or_empty(child);
-
-      if (v_style__is_absolute(child_style)) {
-        continue;
-      }
-
+      float ch;
       if (vs__get_height_tag(child_style) == V_SIZING_GROW) {
         ch = vs_has_aspect_ratio(child_style)
                  ? child->pref_height
@@ -7115,19 +7066,9 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
       v_layout_pass4_height_dist(child, ch);
     }
   } else if (dir == V_DIRECTION_ROW && wrap == V_WRAP_NONE) {
-    float ch;
-
-    v_foreach_child(node, child) {
-      if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE) {
-        continue;
-      }
-
+    v_foreach_flow_child(node, child) {
       const VStyle* child_style = v_node_get_style_or_empty(child);
-
-      if (v_style__is_absolute(child_style)) {
-        continue;
-      }
-
+      float ch;
       if (vs__get_height_tag(child_style) == V_SIZING_GROW) {
         ch = vs_has_aspect_ratio(child_style) ? child->pref_height : inner_h;
       } else {
@@ -7136,13 +7077,7 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
       v_layout_pass4_height_dist(child, ch);
     }
   } else if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_WRAP) {
-    v_foreach_child(node, child) {
-      if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE) {
-        continue;
-      }
-      if (v_node__is_absolute(child)) {
-        continue;
-      }
+    v_foreach_flow_child(node, child) {
       v_layout_pass4_height_dist(child, child->pref_height);
     }
   } else {
@@ -7152,38 +7087,13 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
     float current_row_w = 0;
     float current_row_h = 0;
 
-    v_foreach_child(node, child) {
-      if (!v_node_is_visible(child) || child->popover_type != V_POPOVER_NONE) {
-        continue;
-      }
-      if (v_node__is_absolute(child)) {
-        continue;
-      }
-
+    v_foreach_flow_child(node, child) {
       if (current_row_w > 0 && current_row_w + child->bounds.width > inner_w) {
-        // Flush the completed row: assign its height to every member.
-        float ch;
-        for (VNode* c = row_start; c != child; c = v_node_next_sibling(c)) {
-          if (!c || !v_node_is_visible(c) ||
-              v_node_popover(c) != V_POPOVER_NONE) {
-            continue;
-          }
-
-          const VStyle* child_style = v_node_get_style_or_empty(c);
-
-          if (v_style__is_absolute(child_style)) {
-            continue;
-          }
-          ch = (vs__get_height_tag(child_style) == V_SIZING_GROW)
-                   ? current_row_h
-                   : c->pref_height;
-          v_layout_pass4_height_dist(c, ch);
-        }
+        v__flush_row(row_start, child, current_row_h);
         row_start = NULL;
         current_row_w = 0;
         current_row_h = 0;
       }
-
       if (!row_start) {
         row_start = child;
       }
@@ -7191,22 +7101,7 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
       current_row_h = fmaxf(current_row_h, child->pref_height);
     }
 
-    // Flush the last row.
-    float ch;
-    for (VNode* c = row_start; c != NULL; c = v_node_next_sibling(c)) {
-      if (!v_node_is_visible(c) || c->popover_type != V_POPOVER_NONE) {
-        continue;
-      }
-
-      const VStyle* child_style = v_node_get_style_or_empty(c);
-
-      if (v_style__is_absolute(child_style)) {
-        continue;
-      }
-      ch = (vs__get_height_tag(child_style) == V_SIZING_GROW) ? current_row_h
-                                                              : c->pref_height;
-      v_layout_pass4_height_dist(c, ch);
-    }
+    v__flush_row(row_start, NULL, current_row_h);
   }
 }
 
@@ -7236,8 +7131,18 @@ static float v__get_relative_offset_y(const VStyle* child_style) {
 
 // Pass 5: Positioning & Alignment (Top-down)
 static void v_layout_pass5_pos(VNode* node, float x, float y) {
-  node->bounds.x = v_snap_to_grid_dpr(x);
-  node->bounds.y = v_snap_to_grid_dpr(y);
+  const float sx = v_snap_to_grid_dpr(x);
+  const float sy = v_snap_to_grid_dpr(y);
+
+  if (!v_node_is_dirty(node) && sx == node->bounds.x && sy == node->bounds.y) {
+    // no reason to process children if this node is not dirty and it has not
+    // moved. cpu gets a vacation.
+    return;
+  }
+
+  node->bounds.x = sx;
+  node->bounds.y = sy;
+
   v_node_clear_flag(node, V_NODEFLAG_DIRTY);
 
   const VStyle* style = v_node_get_style_or_empty(node);
@@ -7256,12 +7161,9 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
     // Alignment along main axis (X): only flow children count.
     float total_w = 0;
     int visible_count = 0;
-    v_foreach_child(node, child) {
-      if (v_node_is_visible(child) && child->popover_type == V_POPOVER_NONE &&
-          !v_node__is_absolute(child)) {
-        total_w += child->bounds.width;
-        visible_count++;
-      }
+    v_foreach_flow_child(node, child) {
+      total_w += child->bounds.width;
+      visible_count++;
     }
     if (visible_count > 1) {
       total_w += (visible_count - 1) * gap;
@@ -7309,12 +7211,9 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
     // Alignment along main axis (Y): only flow children count.
     float total_h = 0;
     int visible_count = 0;
-    v_foreach_child(node, child) {
-      if (v_node_is_visible(child) && child->popover_type == V_POPOVER_NONE &&
-          !v_node__is_absolute(child)) {
-        total_h += child->bounds.height;
-        visible_count++;
-      }
+    v_foreach_flow_child(node, child) {
+      total_h += child->bounds.height;
+      visible_count++;
     }
     if (visible_count > 1) {
       total_h += (visible_count - 1) * gap;
@@ -7571,11 +7470,13 @@ void v_node_layout(VNode* self, VNodeModule* mod, int width, int height) {
   }
 
   v_layout_pass1_width(self);
-  v_layout_pass2_width_dist(self, width_f);
+  v_layout_pass2_width_dist(self, width_f, width_f);
   v_layout_pass3_height(self);
   v_layout_pass4_height_dist(self, height_f);
   v_layout_pass5_pos(self, 0, 0);
   v_layout_pass6_popovers(self, 0, 0, width_f, height_f);
+
+  v_ctx_request_render();
 }
 
 
@@ -7611,6 +7512,8 @@ VUID_PKG bool v_node_module_post_init(VNodeModule* self) {
 
   v_node_set_attached(self->root, true);
 
+  self->focused_node = self->root;
+
   return true;
 }
 
@@ -7628,7 +7531,7 @@ VUID_PKG void v_node_module_drop(VNodeModule* self) {
   VUID_ASSERT(self->nodes_by_id.size == 0);
   VUID_ASSERT(self->popover_stack.size == 0);
   VUID_ASSERT(self->event_path.size == 0);
-  VUID_ASSERT(self->active_node == NULL);
+  VUID_ASSERT(self->under_mouse_node == NULL);
   VUID_ASSERT(self->hovered_node == NULL);
   VUID_ASSERT(self->drag_node == NULL);
 
@@ -7664,18 +7567,55 @@ VUID_PKG void v_node_module_remove_popover_node(VNode* node) {
 }
 
 VUID_PKG void v_node_module_remove_input_node(VNode* node) {
-  VNodeModule* node_module = v_ctx_node_module();
+  VNodeModule* mod = v_ctx_node_module();
 
-  if (node_module->hovered_node == node) {
-    node_module->hovered_node = NULL;
+  if (mod->hovered_node == node) {
+    mod->hovered_node = NULL;
   }
 
-  if (node_module->active_node == node) {
-    node_module->active_node = NULL;
+  if (mod->under_mouse_node == node) {
+    mod->under_mouse_node = NULL;
   }
 
-  if (node_module->drag_node == node) {
-    node_module->drag_node = NULL;
+  if (mod->drag_node == node) {
+    mod->drag_node = NULL;
+  }
+
+  if (mod->focused_node == node) {
+    v_node_blur(node);
+  }
+}
+
+VUID_PKG size_t v_event_path_start(VArray* event_path) {
+  return event_path->size;
+}
+
+VUID_PKG void v_event_path_reset(VArray* event_path, size_t start_index) {
+  while (event_path->size > start_index) {
+    v_node_unref(v_array_pop_ptr(event_path));
+  }
+}
+
+VUID_PKG void v_event_path_push_ref(VArray* event_path,
+                                    VNodeEventType type,
+                                    VNode* node) {
+  if (node->event_listeners[type]) {
+    v_node_ref(node);
+    v_array_push(event_path, &node);
+  }
+}
+
+VUID_PKG void v_event_path_dispatch(VArray* event_path,
+                                    VNodeEvent* event,
+                                    size_t start_index,
+                                    size_t end_index) {
+  VNodeEventType type = event->type;
+
+  for (size_t i = start_index; i < end_index; i++) {
+    VNode* curr = v_array_get_ptr_unchecked(event_path, i);
+    if (curr->event_listeners[type]) {
+      curr->event_listeners[type](curr, event);
+    }
   }
 }
 
@@ -7740,6 +7680,10 @@ VUID_PKG void v_node_on_mouse_button(VNode* self,
     target_node = v_node_hit_test_recursive(self, 0, 0, x, y, initial_clip);
   }
 
+  // TODO: this does not dispatch mouse button events, but handles scrollbar
+  // click and an on_click event on mouse up. fine for the current app needs,
+  // but needs to be more robust.
+
   if (down) {
     // Light Dismiss for AUTO and HINT popovers
     for (size_t i = popover_stack->size; i-- > 0;) {
@@ -7751,7 +7695,7 @@ VUID_PKG void v_node_on_mouse_button(VNode* self,
       }
     }
 
-    mod->active_node = target_node;
+    mod->under_mouse_node = target_node;
 
     // Check for scrollbar hit
     v_foreach_ancestor(target_node, curr) {
@@ -7787,43 +7731,33 @@ VUID_PKG void v_node_on_mouse_button(VNode* self,
       }
     }
   } else {
-    if (target_node == mod->active_node && target_node != NULL &&
+    if (target_node == mod->under_mouse_node && target_node != NULL &&
         mod->drag_node == NULL) {
-      // use web dispatch strategy of capturing the event path first, then
-      // dispatching, to allow for cases where event handlers might remove nodes
-      // from the tree (including the target node itself)
-
       VArray* event_path = &mod->event_path;
-      VUID_ASSERT(event_path->size == 0);
+      const size_t start_index = v_event_path_start(event_path);
 
-      // capture the event path
       v_foreach_ancestor(target_node, curr) {
-        v_node_ref(curr);
-        v_array_push(event_path, &curr);
+        v_event_path_push_ref(event_path, V_NODE_EVENT_CLICK, curr);
       }
 
-      VNodeEvent event = {V_NODE_EVENT_CLICK, target_node};
+      const size_t end_index = event_path->size;
 
-      v_node_ref(target_node);
-
-      for (size_t i = 0; i < event_path->size; i++) {
-        VNode* node = v_array_get_ptr_unchecked(event_path, i);
-        if (node->event_listeners[V_NODE_EVENT_CLICK]) {
-          node->event_listeners[V_NODE_EVENT_CLICK](node, &event);
-          // TODO: this should bubble, not sure why the break is here ???
-          break;
+      if (end_index > start_index) {
+        v_node_ref(target_node);
+        {
+          VNodeEvent event = {
+              .type = V_NODE_EVENT_CLICK,
+              .target = target_node,
+          };
+          v_event_path_dispatch(event_path, &event, start_index, end_index);
         }
-      }
+        v_node_unref(target_node);
 
-      v_node_unref(target_node);
-
-      for (size_t i = 0; i < event_path->size; i++) {
-        v_node_unref(v_array_get_ptr_unchecked(event_path, i));
+        v_event_path_reset(event_path, start_index);
       }
-      v_array_clear(event_path);
     }
 
-    mod->active_node = NULL;
+    mod->under_mouse_node = NULL;
     mod->drag_node = NULL;
   }
 }
@@ -7831,6 +7765,8 @@ VUID_PKG void v_node_on_mouse_button(VNode* self,
 VUID_PKG void v_node_on_mouse_move(VNode* self,
                                    VNodeModule* mod,
                                    const VInputEvent* input_event) {
+  /* Dragging */
+
   VNode* drag_node = mod->drag_node;
   const float x = input_event->u.mouse_move.x;
   const float y = input_event->u.mouse_move.y;
@@ -7849,17 +7785,20 @@ VUID_PKG void v_node_on_mouse_move(VNode* self,
       drag_node->scroll_y = fmaxf(
           0.0f, fminf(mod->drag_start_scroll_y + scroll_move, max_scroll));
     }
+
+    v_ctx_request_render();
     return;
   }
+
+  /* Hit Testing */
+
+  // TODO: duplicate code in v_node_on_mouse_button
 
   VRect initial_clip = {0, 0, 1e9f, 1e9f};
   VNode* new_hovered = NULL;
   VArray* popover_stack = &mod->popover_stack;
 
-  // TODO: duplicate code with v_node_on_mouse_button, can we unify the hit
-  // testing logic?
-
-  // 1. Popover Hit Testing (Top to Bottom)
+  // popover Hit Testing (Top to Bottom)
   for (size_t i = popover_stack->size; i-- > 0;) {
     new_hovered = v_node_hit_test_recursive(
         v_array_get_ptr_unchecked(popover_stack, i), 0, 0, x, y, initial_clip);
@@ -7868,12 +7807,12 @@ VUID_PKG void v_node_on_mouse_move(VNode* self,
     }
   }
 
-  // 2. Normal Tree Hit Testing
+  // normal Tree Hit Testing
   if (!new_hovered) {
     new_hovered = v_node_hit_test_recursive(self, 0, 0, x, y, initial_clip);
   }
 
-  // Dismiss HINT popovers when cursor leaves their subtree
+  // dismiss HINT popovers when cursor leaves their subtree
   for (size_t i = popover_stack->size; i-- > 0;) {
     VNode* stack_node = v_array_get_ptr_unchecked(popover_stack, i);
     if (stack_node->popover_type == V_POPOVER_HINT &&
@@ -7882,6 +7821,8 @@ VUID_PKG void v_node_on_mouse_move(VNode* self,
     }
   }
 
+  /* Dispatch Events */
+
   VNode* hovered_node = mod->hovered_node;
 
   if (new_hovered == hovered_node) {
@@ -7889,14 +7830,14 @@ VUID_PKG void v_node_on_mouse_move(VNode* self,
   }
 
   VArray* event_path = &mod->event_path;
-  VUID_ASSERT(event_path->size == 0);
   VNode* fca = v_node_find_common_ancestor(hovered_node, new_hovered);
+  const size_t event_path_start_index = v_event_path_start(event_path);
+  const size_t leave_start_index = v_event_path_start(event_path);
 
   // leave event path: hovered_node -> fca (exclusive)
   for (VNode* curr = hovered_node; curr && curr != fca;
        curr = v_node_parent(curr)) {
-    v_node_ref(curr);
-    v_array_push(event_path, &curr);
+    v_event_path_push_ref(event_path, V_NODE_EVENT_MOUSE_LEAVE, curr);
   }
 
   const size_t enter_start_index = event_path->size;
@@ -7904,37 +7845,38 @@ VUID_PKG void v_node_on_mouse_move(VNode* self,
   // enter event path: new_hovered -> fca (exclusive)
   for (VNode* curr = new_hovered; curr && curr != fca;
        curr = v_node_parent(curr)) {
-    v_node_ref(curr);
-    v_array_push(event_path, &curr);
+    v_event_path_push_ref(event_path, V_NODE_EVENT_MOUSE_ENTER, curr);
   }
 
   v_node_ref(new_hovered);
   v_node_ref(hovered_node);
 
-  // dispatch leave events in order from hovered_node to fca
-  for (size_t i = 0; i < enter_start_index; i++) {
-    VNode* curr = v_array_get_ptr_unchecked(event_path, i);
-    v_node_clear_flag(curr, V_NODEFLAG_HOVERED);
-    if (curr->event_listeners[V_NODE_EVENT_MOUSE_LEAVE]) {
-      VNodeEvent event = {V_NODE_EVENT_MOUSE_LEAVE, curr};
-      curr->event_listeners[V_NODE_EVENT_MOUSE_LEAVE](curr, &event);
-    }
+  if (enter_start_index > leave_start_index) {
+    VNodeEvent leave_event = {
+        .type = V_NODE_EVENT_MOUSE_LEAVE,
+        .target = hovered_node,
+        .related_target = new_hovered,
+    };
+    v_event_path_dispatch(event_path, &leave_event, leave_start_index,
+                          enter_start_index);
   }
 
-  // dispatch enter events in order from fca to new_hovered
-  for (size_t i = enter_start_index; i < event_path->size; i++) {
-    VNode* curr = v_array_get_ptr_unchecked(event_path, i);
-    v_node_set_flag(curr, V_NODEFLAG_HOVERED);
-    if (curr->event_listeners[V_NODE_EVENT_MOUSE_ENTER]) {
-      VNodeEvent event = {V_NODE_EVENT_MOUSE_ENTER, curr};
-      curr->event_listeners[V_NODE_EVENT_MOUSE_ENTER](curr, &event);
-    }
+  const size_t end_index = event_path->size;
+
+  if (end_index > enter_start_index) {
+    VNodeEvent enter_event = {
+        .type = V_NODE_EVENT_MOUSE_ENTER,
+        .target = new_hovered,
+        .related_target = hovered_node,
+    };
+    v_event_path_dispatch(event_path, &enter_event, enter_start_index,
+                          end_index);
   }
 
-  // if we are the last holder of new_hovered, it was removed / deleted
-  // during event dispatch. if that is the case, we should not store this ref in
-  // the context.
-  if (new_hovered && new_hovered->ref_count == 1) {
+  // the new_hovered ref could have been removed from the tree or destroyed
+  // during event dispatch. mod->hovered_node is unowned, so we need to check
+  // that new_hovered is owned by the root to safely set hovered_node.
+  if (new_hovered && !v_node_has_flag(new_hovered, V_NODEFLAG_ATTACHED)) {
     mod->hovered_node = NULL;
   } else {
     mod->hovered_node = new_hovered;
@@ -7943,11 +7885,7 @@ VUID_PKG void v_node_on_mouse_move(VNode* self,
   v_node_unref(new_hovered);
   v_node_unref(hovered_node);
 
-  for (size_t i = 0; i < event_path->size; i++) {
-    v_node_unref(v_array_get_ptr_unchecked(event_path, i));
-  }
-
-  v_array_clear(event_path);
+  v_event_path_reset(event_path, event_path_start_index);
 }
 
 VUID_PKG void v_node_on_mouse_wheel(VNode* self,
@@ -7966,6 +7904,7 @@ VUID_PKG void v_node_on_mouse_wheel(VNode* self,
                                   input_event->u.mouse_wheel.direction * 20.0f;
       curr->scroll_y =
           fmaxf(0.0f, fminf(curr->scroll_y - scroll_amount, max_scroll));
+      v_ctx_request_render();
       return;
     }
   }
@@ -8203,7 +8142,14 @@ static float v_constrain_border_radius_to_rect(uint16_t border_radius,
                                                float width,
                                                float height);
 
+static bool v_resolve_visibility(const VNode* node) {
+  return v_node_is_visible(node) &&
+         vs_get_visibility(node->style) == V_VISIBILITY_VISIBLE;
+}
+
 VUID_PKG void v_node_render_root(VCommandQueue* cmdq) {
+  // note: root cannot be invisible
+
   VNodeModule* node_module = v_ctx_node_module();
   VNode* root = node_module->root;
   VRect root_clip = {0, 0, root->bounds.width, root->bounds.height};
@@ -8225,7 +8171,7 @@ VUID_PKG void v_node_render_root(VCommandQueue* cmdq) {
     for (size_t i = 0; i < popover_stack->size; i++) {
       VNode* popover = v_array_get_ptr_unchecked(popover_stack, i);
 
-      if (v_node_is_visible(popover)) {
+      if (v_resolve_visibility(popover)) {
         v_node_render(cmdq, popover, 0, 0, root_clip, false);
         v_command_queue_cmd_reset_clip(cmdq);
       }
@@ -8360,7 +8306,7 @@ static void v_node_render(VCommandQueue* cmdq,
   }
 
   v_foreach_child(node, child) {
-    if (v_node_is_visible(child) &&
+    if (v_resolve_visibility(child) &&
         !(skip_popovers && child->popover_type != V_POPOVER_NONE)) {
       v_node_render(cmdq, child, abs_x, child_abs_y, child_clip, skip_popovers);
     }
@@ -8428,6 +8374,11 @@ static bool v_node__is_legal_id(const char* id);
 static VWeakRef* v_node_get_or_create_self_weak_ref(VNode* node);
 static bool v_node__can_insert(const VNode* parent, const VNode* child);
 static VStyle* v_get_empty_style(void);
+static void v_node_focus_event_dispatch(VNodeModule* mod,
+                                        VNodeEventType type,
+                                        VNode* target,
+                                        VNode* related_target);
+static bool v_node_do_focus_change(VNodeModule* mod, VNode* new_focus);
 
 VUID_API VNode* v_node_new(VNodeTag tag) {
   return v_node_new_cfg(tag, NULL);
@@ -8535,7 +8486,7 @@ VUID_API void v_node_set_id(VNode* node, const char* id) {
 
 VUID_API void v_node_set_id_fmt(VNode* node, const char* fmt, ...) {
   va_list args;
-  // TODO: use a scratch buffer. max node id is small, so stack is ok
+  // TODO: use a scratch buffer
   char buf[VUID_MAX_NODE_ID_LENGTH + 1];
   int n;
 
@@ -8630,6 +8581,7 @@ VUID_API void v_node_set_event_listener(VNode* node,
 VUID_API void v_node_reset_scroll_y(VNode* node) {
   if (node) {
     node->scroll_y = 0;
+    v_ctx_request_render();
   }
 }
 
@@ -8876,18 +8828,15 @@ VUID_API void v_node_remove_children(VNode* node) {
 }
 
 VUID_API void v_node_set_text(VNode* node, const char* value) {
-  if (!node || node->tag != V_NODE_TEXT) {
+  if (!node || node->tag != V_NODE_TEXT ||
+      v_string_eq_cstr(node->res_data.text, value)) {
     return;
   }
 
-  const size_t len = value ? strlen(value) : 0;
+  VString* new_text = v_string_from(v_ctx_allocator(), value);
 
-  if (v_stri_eq_cstr_n(&node->res_data.text, value, len)) {
-    return;
-  }
-
-  v_stri_assign_n(&node->res_data.text, v_ctx_allocator(), value, len);
-
+  v_string_unref(node->res_data.text);
+  node->res_data.text = new_text;
   v_node_mark_dirty(node);
 }
 
@@ -8898,17 +8847,20 @@ VUID_API void v_node_set_text_fmt(VNode* node, const char* fmt, ...) {
 
   va_list args;
   va_start(args, fmt);
-  v_stri_assign_vfmt(&node->res_data.text, v_ctx_allocator(), fmt, args);
+  VString* new_text = v_string_from_vfmt(v_ctx_allocator(), fmt, args);
   va_end(args);
 
-  // note: cannot determine if string changed without doing an
-  // alloc. for now, prefer to always trigger a layout
-
-  v_node_mark_dirty(node);
+  if (v_string_eq(node->res_data.text, new_text)) {
+    v_string_unref(new_text);
+  } else {
+    v_string_unref(node->res_data.text);
+    node->res_data.text = new_text;
+    v_node_mark_dirty(node);
+  }
 }
 
 VUID_API const char* v_node_text(const VNode* node) {
-  return (node && node->tag == V_NODE_TEXT) ? v_stri_str(&node->res_data.text)
+  return (node && node->tag == V_NODE_TEXT) ? v_string_cstr(node->res_data.text)
                                             : "";
 }
 
@@ -8917,9 +8869,7 @@ VUID_API void v_node_set_src(VNode* node, const char* src) {
     return;
   }
 
-  src = src ? src : "";
-
-  if (v_stri_eq_cstr(&node->res_data.src, src)) {
+  if (v_string_eq_cstr(node->res_data.src, src)) {
     return;
   }
 
@@ -8930,22 +8880,29 @@ VUID_API void v_node_set_src(VNode* node, const char* src) {
     node->res.image_resource = NULL;
   }
 
-  if (!v_cstr_is_empty(src)) {
-    node->res.image_resource = v_image_store_acquire(image_store, src);
+  if (node->res_data.src) {
+    v_string_unref(node->res_data.src);
+    node->res_data.src = NULL;
   }
 
-  // TODO: this can fail
-  v_stri_assign(&node->res_data.src, v_ctx_allocator(), src);
+  if (!v_cstr_is_empty(src)) {
+    // set the src even if the acquire fails. if src fails, the image resource
+    // will just be NULL. TODO: review this policy.
+    VString* new_src = v_string_from(v_ctx_allocator(), src);
+
+    node->res_data.src = new_src;
+
+    VImage* new_image = v_image_store_acquire(image_store, new_src);
+
+    node->res.image_resource = new_image;
+  }
 
   v_node_mark_dirty(node);
 }
 
 VUID_API const char* v_node_src(const VNode* node) {
-  if (node && node->tag == V_NODE_IMAGE) {
-    return v_stri_str(&node->res_data.src);
-  } else {
-    return "";
-  }
+  return v_string_cstr(node && node->tag == V_NODE_IMAGE ? node->res_data.src
+                                                         : NULL);
 }
 
 VUID_API void v_node_set_data(VNode* node, void* data) {
@@ -9198,6 +9155,22 @@ VUID_PKG VNode* v_node_constructor(VNodeTag tag) {
   return node;
 }
 
+VUID_API bool v_node_focus(VNode* self) {
+  V_CHECK_CONTEXT(false);
+  return self ? v_node_do_focus_change(v_ctx_node_module(), self) : false;
+}
+
+VUID_API bool v_node_blur(VNode* self) {
+  V_CHECK_CONTEXT(false);
+  return self ? v_node_do_focus_change(v_ctx_node_module(), v_root()) : false;
+}
+
+VUID_API bool v_node_has_focus(const VNode* node) {
+  V_CHECK_CONTEXT(false);
+  VNodeModule* mod = v_ctx_node_module();
+  return node ? node == mod->focused_node : false;
+}
+
 static VStyle* v_node_get_or_create_style(VNode* node) {
   VStyle* style = node->style;
 
@@ -9212,19 +9185,17 @@ static void v_node_destructor(VNode* node) {
   VUID_ASSERT(v_node_has_parent(node) == false);
   VUID_ASSERT(!v_node_has_flag(node, V_NODEFLAG_ATTACHED));
 
-  VAllocator* allocator = v_ctx_allocator();
-
   v_node_remove_children(node);
 
   // release resources
   if (node->tag == V_NODE_TEXT) {
-    v_stri_drop(&node->res_data.text, allocator);
+    v_string_unref(node->res_data.text);
 
     if (node->res.text_layout) {
       v_text_module_destroy_layout(v_ctx_text_module(), node->res.text_layout);
     }
   } else if (node->tag == V_NODE_IMAGE) {
-    v_stri_drop(&node->res_data.src, allocator);
+    v_string_unref(node->res_data.src);
     if (node->res.image_resource) {
       v_image_store_release(v_ctx_image_store(), node->res.image_resource);
     }
@@ -9312,6 +9283,55 @@ static VWeakRef* v_node_get_or_create_self_weak_ref(VNode* node) {
 
 static VStyle* v_get_empty_style(void) {
   return v_ctx_node_module()->empty_style;
+}
+
+static void v_node_focus_event_dispatch(VNodeModule* mod,
+                                        VNodeEventType type,
+                                        VNode* target,
+                                        VNode* related_target) {
+  VArray* event_path = &mod->event_path;
+  const uint32_t start_index = v_event_path_start(event_path);
+
+  v_foreach_ancestor(target, node) {
+    v_event_path_push_ref(event_path, type, node);
+  }
+
+  const uint32_t end_index = event_path->size;
+
+  if (end_index > start_index) {
+    VNodeEvent event = {
+        .type = type,
+        .target = target,
+        .related_target = related_target,
+    };
+    v_event_path_dispatch(event_path, &event, start_index, end_index);
+    v_event_path_reset(event_path, start_index);
+  }
+}
+
+static bool v_node_do_focus_change(VNodeModule* mod, VNode* new_focus) {
+  if (!v_node_has_flag(new_focus, V_NODEFLAG_ATTACHED)) {
+    return false;
+  }
+
+  VNode* old_focus = mod->focused_node;
+
+  if (new_focus == old_focus) {
+    return true;
+  }
+
+  mod->focused_node = new_focus;
+
+  v_node_ref(old_focus);
+  v_node_ref(new_focus);
+
+  v_node_focus_event_dispatch(mod, V_NODE_EVENT_BLUR, old_focus, new_focus);
+  v_node_focus_event_dispatch(mod, V_NODE_EVENT_FOCUS, new_focus, old_focus);
+
+  v_node_unref(old_focus);
+  v_node_unref(new_focus);
+
+  return true;
 }
 
 
