@@ -13,7 +13,7 @@
 // private function declarations
 //
 
-static VNode* ControllerListItem(ControllerId id);
+static void ControllerListItem(NN_CALLABLE, ControllerId id);
 static void OnNavigatorEvent(NavigatorEvent* event);
 static void OnControllerChangeEvent(const ControllerChangeEvent* event);
 static void InfoButtonOnClick(VNode* node, VNodeEvent* event);
@@ -35,19 +35,17 @@ static ControllerId GetControllerId(VNode* node);
 
 VNode* ControllerListPage(void)
 {
-  // clang-format off
-  VNode* page = Box({
-    .id = PAGEID_CONTROLLER_LIST,
-    .sclass = CLS_PAGE,
-    Children(
-      Text({.content.text = STR(SID_CONTROLLERS), .sclass = CLS_PAGE_H1}),
-      Box({
-        .id = NID_CONTROLLER_LIST,
-        .sclass= CLS_SCROLLABLE_LIST,
-      }),
-    )
-  });
-  // clang-format on
+  NN_BUILD_NEW(page)
+  {
+    NN_BOX({.id = PAGEID_CONTROLLER_LIST, .sclass = CLS_PAGE})
+    {
+      NN_TEXT({.text = STR(SID_CONTROLLERS), .sclass = CLS_PAGE_H1});
+      NN_BOX({
+          .id = NID_CONTROLLER_LIST,
+          .sclass = CLS_SCROLLABLE_LIST,
+      });
+    }
+  }
 
   return Navigable_Init(page, &OnNavigatorEvent);
 }
@@ -56,83 +54,83 @@ VNode* ControllerListPage(void)
 // private function implementation
 //
 
-static VNode* ControllerListItem(ControllerId id)
+static void ControllerListItem(NN_CALLABLE, ControllerId id)
 {
   // TODO: create a proper controller list item widget
 
-  void* button_data = (void*)(uintptr_t)id;
-  // clang-format off
-  VNode* list_item = Box({
-    .sclass = CLS_LIST,
-    Children(
-      Text({.sclass = CLS_TEXT}),
-      // TODO: localize
-      Button("Events", button_data, &EventsButtonOnClick),
-      Button("Configure", button_data, &ConfigureButtonOnClick),
-      Button("I", button_data, &InfoButtonOnClick)
-    )
-  });
-  // clang-format on
+  NN_BOX({.sclass = CLS_LIST})
+  {
+    VNode* list_item = NN_SELF();
+    VStyle* list_item_style = v_node_style(list_item);
 
-  v_node_set_id_fmt(list_item, CONTROLLER_ID_FMT, id);
+    v_node_set_id_fmt(list_item, CONTROLLER_ID_FMT, id);
+    vs_set_direction(list_item_style, V_DIRECTION_ROW);
+    vs_set_gap(list_item_style, THEME_SP_SM);
 
-  VNode* text = v_node_first_child(list_item);
+    NN_TEXT({.sclass = CLS_TEXT})
+    {
+      VNode* text = NN_SELF();
+      VStyle* text_style = v_node_style(text);
 
-  vs_set_direction(v_node_style(list_item), V_DIRECTION_ROW);
-  vs_set_gap(v_node_style(list_item), THEME_SP_SM);
+      vs_set_width(text_style, V_GROW());
+      v_node_set_text_fmt(text, "%i :: %s :: %s", (int)id,
+                          Controller_GetName(id), Controller_GetGUID(id));
+    }
 
-  vs_set_width(v_node_style(text), V_GROW());
-  v_node_set_text_fmt(text, "%i :: %s :: %s", (int)id, Controller_GetName(id),
-                      Controller_GetGUID(id));
+    void* button_data = (void*)(uintptr_t)id;
 
-  if (Controller_HasRumble(id)) {
-    v_node_append_child(list_item,
-                        Button("R", button_data, &RumbleButtonOnClick));
+    // TODO: localize
+    NN_CALL(Button, "Events", button_data, &EventsButtonOnClick);
+    NN_CALL(Button, "Configure", button_data, &ConfigureButtonOnClick);
+    NN_CALL(Button, "I", button_data, &InfoButtonOnClick);
+
+    if (Controller_HasRumble(id)) {
+      NN_CALL(Button, "R", button_data, &RumbleButtonOnClick);
+    }
+
+    if (Controller_HasMapping(id)) {
+      NN_CALL(Button, "RM", button_data, &RemoveMappingButtonOnClick);
+      NN_CALL(Button, "CM", button_data, &CopyMappingButtonOnClick);
+    }
   }
-
-  if (Controller_HasMapping(id)) {
-    v_node_append_child(list_item,
-                        Button("RM", button_data, &RemoveMappingButtonOnClick));
-    v_node_append_child(list_item,
-                        Button("CM", button_data, &CopyMappingButtonOnClick));
-  }
-
-  return list_item;
 }
 
 static void OnNavigatorEvent(NavigatorEvent* event)
 {
   // TODO: fill the list once and rely on change events to update if visible or
   // invisible
-  if (event->type == NAVIGATOR_EVENT_ENTER) {
-    VNode* list = v_get_node_by_id(NID_CONTROLLER_LIST);
+  if (event->type != NAVIGATOR_EVENT_ENTER) {
+    return;
+  }
 
-    v_node_remove_children(list);
+  VNode* list = v_get_node_by_id(NID_CONTROLLER_LIST);
+
+  v_node_remove_children(list);
+
+  NN_BUILD_APPEND(list)
+  {
+    NN_BOX({.sclass = CLS_BUTTON_ROW})
+    {
+      NN_CALL(Button, "Reload Mappings", NULL, &ReloadMappingsButtonOnClick);
+      NN_CALL(Button, "Load Mappings (Clipboard)", NULL,
+              &LoadMappingsFromClipboardButtonOnClick);
+      NN_CALL(Button, "Export Mappings (Clipboard)", NULL,
+              &ExportMappingsToClipboardButtonOnClick);
+    }
+
+    // TODO: show message for no controllers
+    // TODO: the button row is not final design
 
     int controller_count = 0;
     ControllerId* controller_ids =
         ControllerListModel_SortControllers(&controller_count);
 
-    // TODO: show message for no controllers
-    // TODO: the button row is not final design
-
-    // clang-format off
-    v_node_append_child(list, Box({
-      .sclass= CLS_BUTTON_ROW,
-      Children(
-        Button("Reload Mappings", NULL, &ReloadMappingsButtonOnClick),
-        Button("Load Mappings (Clipboard)", NULL, &LoadMappingsFromClipboardButtonOnClick),
-        Button("Export Mappings (Clipboard)", NULL, &ExportMappingsToClipboardButtonOnClick)
-      )
-    }));
-    // clang-format on
-
     for (int i = 0; i < controller_count; ++i) {
-      v_node_append_child(list, ControllerListItem(controller_ids[i]));
+      NN_CALL(ControllerListItem, controller_ids[i]);
     }
-
-    ControllerListModel_AddChangeEventListener(&OnControllerChangeEvent);
   }
+
+  ControllerListModel_AddChangeEventListener(&OnControllerChangeEvent);
 }
 
 static void OnControllerChangeEvent(const ControllerChangeEvent* event)
@@ -141,7 +139,10 @@ static void OnControllerChangeEvent(const ControllerChangeEvent* event)
 
   switch (event->change) {
     case CONTROLLER_CHANGE_ADDED:
-      v_node_append_child(list, ControllerListItem(event->id));
+      NN_BUILD_APPEND(list)
+      {
+        ControllerListItem(NN_STATE(), event->id);
+      }
       break;
     case CONTROLLER_CHANGE_REMOVED: {
       v_node_remove_child(list,
@@ -152,8 +153,11 @@ static void OnControllerChangeEvent(const ControllerChangeEvent* event)
       VNode* old_list_item = v_get_node_by_id_fmt(CONTROLLER_ID_FMT, event->id);
 
       if (old_list_item) {
-        v_node_replace_child(list, ControllerListItem(event->id),
-                             old_list_item);
+        NN_BUILD_NEW(new_list_item)
+        {
+          NN_CALL(ControllerListItem, event->id);
+        }
+        v_node_replace_child(list, new_list_item, old_list_item);
       }
       break;
     }

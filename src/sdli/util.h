@@ -32,11 +32,6 @@
 #define SDLI_MIN(a, b) ((a) < (b) ? (a) : (b))
 #define SDLI_MAX(a, b) ((a) > (b) ? (a) : (b))
 
-#define Box v_box
-#define Text v_txt
-#define Image v_img
-#define Children v_children
-
 /* zsview init for constant initialization. */
 #define zv_init(STR) {STR, (isize)(sizeof("" STR) - 1)}
 /* Get the length of an undecayed array.*/

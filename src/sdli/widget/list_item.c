@@ -7,22 +7,25 @@
 // private function declarations
 //
 
-static VNode* KeyValueListItemImpl(const char* key_name,
-                                   const char* value_id,
-                                   bool is_last);
+static void KeyValueListItem2Impl(NN_CALLABLE,
+                                  const char* key_name,
+                                  const char* value_id,
+                                  bool is_last);
 
 //
 // public function implementation
 //
 
-VNode* KeyValueListItem(const char* key_name, const char* value_id)
+void KeyValueListItem(NN_CALLABLE, const char* key_name, const char* value_id)
 {
-  return KeyValueListItemImpl(key_name, value_id, false);
+  KeyValueListItem2Impl(NN_STATE(), key_name, value_id, false);
 }
 
-VNode* KeyValueListItemLast(const char* key_name, const char* value_id)
+void KeyValueListItemLast(NN_CALLABLE,
+                          const char* key_name,
+                          const char* value_id)
 {
-  return KeyValueListItemImpl(key_name, value_id, true);
+  KeyValueListItem2Impl(NN_STATE(), key_name, value_id, true);
 }
 
 VNode* KeyValueListItem_GetValue(VNode* kv_list_item)
@@ -34,23 +37,20 @@ VNode* KeyValueListItem_GetValue(VNode* kv_list_item)
 // private function implementation
 //
 
-static VNode* KeyValueListItemImpl(const char* key_name,
-                                   const char* value_id,
-                                   bool is_last)
+static void KeyValueListItem2Impl(NN_CALLABLE,
+                                  const char* key_name,
+                                  const char* value_id,
+                                  bool is_last)
 {
-  // clang-format off
-  return Box({
-    .sclass = is_last ? CLS_LIST_ITEM_LAST : CLS_LIST_ITEM,
-    Children(
-      Text({
-        .content.text = key_name,
+  NN_BOX({.sclass = is_last ? CLS_LIST_ITEM_LAST : CLS_LIST_ITEM})
+  {
+    NN_TEXT({
+        .text = key_name,
         .sclass = CLS_LIST_ITEM_KEY_TEXT,
-      }),
-      Text({
+    });
+    NN_TEXT({
         .id = value_id,
         .sclass = CLS_LIST_ITEM_VALUE_TEXT,
-      })
-    )
-  });
-  // clang-format on
+    });
+  }
 }

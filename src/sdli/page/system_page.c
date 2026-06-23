@@ -1,5 +1,6 @@
 #include <sdli/page/page.h>
 
+#include <sdli/node_notation.h>
 #include <sdli/model/model.h>
 #include <sdli/style.h>
 #include <sdli/util.h>
@@ -31,49 +32,38 @@ static void OnNavigatorEvent(NavigatorEvent* event);
 
 VNode* SystemPage(void)
 {
-  // clang-format off
-  VNode* page = Box({
-    .id = PAGEID_SYSTEM,
-    .sclass = CLS_PAGE,
-    Children(
-      Text({.content.text = STR(SID_SYSTEM), .sclass = CLS_PAGE_H1}),
-      Box({
-        .sclass = CLS_SCROLLABLE,
-        Children(
-          Text({.content.text = STR(SID_CAP_SDL), .sclass = CLS_PAGE_H2}),
-          Box({
-            .sclass= CLS_LIST,
-            Children(
-              KeyValueListItem(STR(SID_VERSION), NID_SDL_VERSION),
-              KeyValueListItemLast(STR(SID_REVISION), NID_SDL_REVISION)
-            )
-          }),
-          Text({.content.text = STR(SID_CAP_OS), .sclass = CLS_PAGE_H2}),
-          Box({
-            .sclass= CLS_LIST,
-            Children(
-              KeyValueListItem(STR(SID_PLATFORM), NID_PLATFORM),
-              KeyValueListItemLast(STR(SID_THEME), NID_THEME)
-            )
-          }),
-          Text({.content.text = STR(SID_CAP_HARDWARE), .sclass = CLS_PAGE_H2}),
-          Box({
-            .sclass= CLS_LIST,
-            Children(
-              KeyValueListItem(STR(SID_POWER_STATE), NID_POWER_STATE),
-              KeyValueListItem(STR(SID_BATTERY), NID_BATTERY),
-              KeyValueListItem(STR(SID_CPU_CORES), NID_CPU_CORES),
-              KeyValueListItem(STR(SID_CACHE_LINE_SIZE), NID_CACHE_LINE_SIZE),
-              KeyValueListItemLast(STR(SID_SYSTEM_RAM), NID_SYSTEM_RAM)
-            )
-          })
-        )
-      })
-    )
-  });
-  // clang-format on
+  NN_BUILD_NEW(system_page)
+  {
+    NN_BOX({.id = PAGEID_SYSTEM, .sclass = CLS_PAGE})
+    {
+      NN_TEXT({.text = STR(SID_SYSTEM), .sclass = CLS_PAGE_H1});
+      NN_BOX({.sclass = CLS_LIST})
+      {
+        NN_CALL(KeyValueListItem, STR(SID_VERSION), NID_SDL_VERSION);
+        NN_CALL(KeyValueListItemLast, STR(SID_REVISION), NID_SDL_REVISION);
+      }
 
-  return Navigable_Init(page, &OnNavigatorEvent);
+      NN_TEXT({.text = STR(SID_CAP_OS), .sclass = CLS_PAGE_H2});
+      NN_BOX({.sclass = CLS_LIST})
+      {
+        NN_CALL(KeyValueListItem, STR(SID_PLATFORM), NID_PLATFORM);
+        NN_CALL(KeyValueListItemLast, STR(SID_THEME), NID_THEME);
+      }
+
+      NN_TEXT({.text = STR(SID_CAP_HARDWARE), .sclass = CLS_PAGE_H2});
+      NN_BOX({.sclass = CLS_LIST})
+      {
+        NN_CALL(KeyValueListItem, STR(SID_POWER_STATE), NID_POWER_STATE);
+        NN_CALL(KeyValueListItem, STR(SID_BATTERY), NID_BATTERY);
+        NN_CALL(KeyValueListItem, STR(SID_CPU_CORES), NID_CPU_CORES);
+        NN_CALL(KeyValueListItemLast, STR(SID_CACHE_LINE_SIZE),
+                NID_CACHE_LINE_SIZE);
+        NN_CALL(KeyValueListItemLast, STR(SID_SYSTEM_RAM), NID_SYSTEM_RAM);
+      }
+    }
+  }
+
+  return Navigable_Init(system_page, &OnNavigatorEvent);
 }
 
 //

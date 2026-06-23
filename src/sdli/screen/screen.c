@@ -26,10 +26,10 @@ static VNode* CreateScreen(const char* id);
 
 VNode* ScreenNavigator(void)
 {
-  VNode* screen_navigator = Box({
-      .id = NID_SCREEN_NAVIGATOR,
-      .sclass = CLS_FILL,
-  });
+  NN_BUILD_NEW(screen_navigator)
+  {
+    NN_BOX({.id = NID_SCREEN_NAVIGATOR, .sclass = CLS_FILL});
+  }
 
   return Navigator_Init(screen_navigator, &CreateScreen);
 }

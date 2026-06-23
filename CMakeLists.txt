@@ -82,6 +82,7 @@ target_compile_options(sdli_base INTERFACE
 add_library(${SDLI_LIB}
   "src/sdli/app.c"
   "src/sdli/assets.c"
+  "src/sdli/node_notation.c"
   "src/sdli/strings.c"
   "src/sdli/style.c"
   "src/sdli/util.c"

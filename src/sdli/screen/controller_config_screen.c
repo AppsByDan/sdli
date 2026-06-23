@@ -93,50 +93,35 @@ VNode* ControllerConfigScreen(void)
 {
   StyleSheet();
 
-  // clang-format off
-  VNode* screen =  Box({
-    .id = SCREENID_CONTROLLER_CONFIG,
-    .sclass = CLS_SCREEN,
-    Children(
-      Box({
-        .sclass = CLS_SCREEN_MENU,
-        Children(
-          Text({.id = NID_CONTROLLER_NAME, .sclass = CLS_SCREEN_MENU_NAME}),
-          Button("Back", NULL, &BackButtonOnClick)
-        )
-      }),
-      Box({
-        .sclass = CLS_FILL,
-        Children(
-          Box({
-            .id = NID_PLAN,
-            .sclass = CLS_CENTER_XY,
-          }),
-          Box({
-            .sclass = CLS_CENTER_XY,
-            Children(
-              Box({
-                .sclass = CLS_CONFIG_CURSOR,
-                Children(
-                  Box({
-                    .sclass = CLS_CONFIG_CURSOR_NAV,
-                    Children(
-                      Button("<<", NULL, &PreviousGroupButtonOnClick),
-                      Button("<", NULL, &PreviousButtonOnClick),
-                      Button(">", NULL, &NextButtonOnClick),
-                      Button(">>", NULL, &NextGroupButtonOnClick),
-                    )
-                  }),
-                  Button("Finish", NULL, &FinishButtonOnClick)
-                )
-              })
-            )
-          })
-        )
-      })
-    )
-  });
-  // clang-format on
+  NN_BUILD_NEW(screen)
+  {
+    NN_BOX({.id = SCREENID_CONTROLLER_CONFIG, .sclass = CLS_SCREEN})
+    {
+      NN_BOX({.sclass = CLS_SCREEN_MENU})
+      {
+        NN_TEXT({.id = NID_CONTROLLER_NAME, .sclass = CLS_SCREEN_MENU_NAME});
+        NN_CALL(Button, "Back", NULL, &BackButtonOnClick);
+      }
+      NN_BOX({.sclass = CLS_FILL})
+      {
+        NN_BOX({.id = NID_PLAN, .sclass = CLS_CENTER_XY});
+        NN_BOX({.sclass = CLS_CENTER_XY})
+        {
+          NN_BOX({.sclass = CLS_CONFIG_CURSOR})
+          {
+            NN_BOX({.sclass = CLS_CONFIG_CURSOR_NAV})
+            {
+              NN_CALL(Button, "<<", NULL, &PreviousGroupButtonOnClick);
+              NN_CALL(Button, "<", NULL, &PreviousButtonOnClick);
+              NN_CALL(Button, ">", NULL, &NextButtonOnClick);
+              NN_CALL(Button, ">>", NULL, &NextGroupButtonOnClick);
+            }
+            NN_CALL(Button, "Finish", NULL, &FinishButtonOnClick);
+          }
+        }
+      }
+    }
+  }
 
   return Navigable_Init(screen, &OnNavigatorEvent);
 }
@@ -149,26 +134,29 @@ static void UpdateConfigGroup(size_t selected_index)
 {
   CCScreenState* state = GetScreenState();
   CCBindingGroup* group = &state->groups.data[state->group_index];
-  VNode* group_box = Box({
-      .sclass = CLS_CONFIG_GROUP,
-      Children(Text({.content.text = group->name, .sclass = CLS_PLAN_H1})),
-  });
-
-  for (size_t i = 0; i < group->bindings.size; i++) {
-    CCBinding* config = &group->bindings.items[i];
-    VNode* text = Text({
-        .content.text = StandardGamepadKey_ToString(config->key),
-        .sclass = selected_index == i ? CLS_PLAN_TEXT_HIGHLIGHT : CLS_PLAN_TEXT,
-    });
-    v_node_set_id_fmt(text, "ccfg:sgk%i-%i", (int)state->group_index,
-                      (int)config->key);
-    v_node_append_child(group_box, text);
-  }
-
   VNode* plan = v_get_node_by_id(NID_PLAN);
 
   v_node_remove_children(plan);
-  v_node_append_child(plan, group_box);
+  NN_BUILD_APPEND(plan)
+  {
+    NN_BOX({.sclass = CLS_CONFIG_GROUP})
+    {
+      NN_TEXT({.text = group->name, .sclass = CLS_PLAN_H1});
+
+      for (size_t i = 0; i < group->bindings.size; i++) {
+        CCBinding* config = &group->bindings.items[i];
+        const char* text = StandardGamepadKey_ToString(config->key);
+        const char* sclass =
+            selected_index == i ? CLS_PLAN_TEXT_HIGHLIGHT : CLS_PLAN_TEXT;
+
+        NN_TEXT({.text = text, .sclass = sclass})
+        {
+          v_node_set_id_fmt(NN_SELF(), "ccfg:sgk%i-%i", (int)state->group_index,
+                            (int)config->key);
+        }
+      }
+    }
+  }
 }
 
 static void UpdateSelectedConfig(size_t group_index,

@@ -25,6 +25,7 @@ int main(int argc, char** argv)
   ControllerListModel_Init();
   ControllerInputModel_Init();
   State_Init();
+  NodeNotation_Init();
 
   LoadAssets();
   LoadStyleSheet();
@@ -39,6 +40,7 @@ int main(int argc, char** argv)
     App_Present();
   }
 
+  NodeNotation_Drop();
   State_Drop();
   ControllerInputModel_Drop();
   ControllerListModel_Drop();

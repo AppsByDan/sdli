@@ -15,11 +15,15 @@
 
 VNode* OverlayLayer(void)
 {
-  VNode* overlay_layer = Box({
-      .id = NID_OVERLAY_LAYER,
-      .sclass = CLS_OVERLAY_LAYER,
-  });
-  v_node_set_visible(overlay_layer, false);
+  NN_BUILD_NEW(overlay_layer)
+  {
+    NN_BOX({
+        .id = NID_OVERLAY_LAYER,
+        .sclass = CLS_OVERLAY_LAYER,
+        .hidden = true,
+    });
+  }
+
   return overlay_layer;
 }
 

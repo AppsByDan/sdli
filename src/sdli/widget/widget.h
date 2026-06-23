@@ -2,6 +2,7 @@
 #define SDLI_WIDGET_H
 
 #include <sdli/controller-fwd.h>
+#include <sdli/node_notation.h>
 #include <sdli/strings.h>
 
 #include <vuid.h>
@@ -72,8 +73,10 @@ VNode* Navigable_Init(VNode* node, OnNavigatorEventFn on_event);
  * use the Bind* functions to set the value.
  */
 
-VNode* KeyValueListItem(const char* key_name, const char* value_id);
-VNode* KeyValueListItemLast(const char* key_name, const char* value_id);
+void KeyValueListItem(NN_CALLABLE, const char* key_name, const char* value_id);
+void KeyValueListItemLast(NN_CALLABLE,
+                          const char* key_name,
+                          const char* value_id);
 VNode* KeyValueListItem_GetValue(VNode* kv_list_item);
 
 /*
@@ -81,11 +84,15 @@ VNode* KeyValueListItem_GetValue(VNode* kv_list_item);
  * click actions.
  */
 
-VNode* Button(const char* label, void* data, VNodeEventListener on_click);
-VNode* ButtonWithId(const char* id,
-                    const char* label,
-                    void* data,
-                    VNodeEventListener on_click);
+void Button(NN_CALLABLE,
+            const char* label,
+            void* data,
+            VNodeEventListener on_click);
+void ButtonWithId(NN_CALLABLE,
+                  const char* id,
+                  const char* label,
+                  void* data,
+                  VNodeEventListener on_click);
 void Button_SetLabel(VNode* node, const char* text);
 
 /*

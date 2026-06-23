@@ -1,5 +1,6 @@
 #include <sdli/screen/screen.h>
 
+#include <sdli/node_notation.h>
 #include <sdli/model/model.h>
 #include <sdli/page/page.h>
 #include <sdli/style.h>
@@ -41,7 +42,7 @@ static const size_t HOME_BUTTON_SIZE = u_arraylen(HOME_BUTTONS);
 //
 
 static void StyleSheet(void);
-static VNode* HomeButton(const HomeButtonData* data);
+static void HomeButton(NN_CALLABLE, const HomeButtonData* data);
 static void HomeButton_OnClick(VNode* node, VNodeEvent* event);
 static void HomeButton_OnMouseOver(VNode* node, VNodeEvent* event);
 static void OnNavigatorEvent(NavigatorEvent* event);
@@ -54,27 +55,21 @@ VNode* HomeScreen(void)
 {
   StyleSheet();
 
-  VNode* left_column;
-  VNode* right_column;
-  // clang-format off
-  VNode* home_screen = Box({
-    .id = SCREENID_HOME,
-    .sclass = CLS_FILL,
-    Children(
-      left_column = Box({
-        .sclass = CLS_HOME_LEFT_COLUMN,
-      }),
-      right_column = Box({
-        .sclass = CLS_HOME_RIGHT_COLUMN,
-      })
-    )
-  });
-  // clang-format on
-
-  PageNavigator_Init(right_column);
-
-  for (size_t i = 0; i < HOME_BUTTON_SIZE; ++i) {
-    v_node_append_child(left_column, HomeButton(&HOME_BUTTONS[i]));
+  NN_BUILD_NEW(home_screen)
+  {
+    NN_BOX({.id = SCREENID_HOME, .sclass = CLS_FILL})
+    {
+      NN_BOX({.sclass = CLS_HOME_LEFT_COLUMN})
+      {
+        for (size_t i = 0; i < HOME_BUTTON_SIZE; ++i) {
+          NN_CALL(HomeButton, &HOME_BUTTONS[i]);
+        }
+      }
+      NN_BOX({.sclass = CLS_HOME_RIGHT_COLUMN})
+      {
+        PageNavigator_Init(NN_SELF());
+      }
+    }
   }
 
   return Navigable_Init(home_screen, &OnNavigatorEvent);
@@ -85,6 +80,60 @@ static void OnNavigatorEvent(NavigatorEvent* event)
   if (event->type == NAVIGATOR_EVENT_ENTER) {
     State_ClearController();
     PageNavigator_Goto(PAGEID_CONTROLLER_LIST);
+  }
+}
+
+static void HomeButton(NN_CALLABLE, const HomeButtonData* data)
+{
+  const char* text = GetString(LOCALE_EN_US, data->string_id);
+  const char* icon_text = data->icon_text;
+  const char* page_id = data->page_id;
+
+  NN_BOX({
+      .sclass = CLS_HOME_BUTTON,
+      .data = (void*)page_id,
+      .on_click = &HomeButton_OnClick,
+      .on_mouse_enter = &HomeButton_OnMouseOver,
+      .on_mouse_leave = &HomeButton_OnMouseOver,
+  })
+  {
+    NN_BOX({.sclass = CLS_HOME_BUTTON_ICON_BOX})
+    {
+      NN_TEXT({.sclass = CLS_HOME_BUTTON_ICON, .text = icon_text});
+    }
+    NN_TEXT({.sclass = CLS_HOME_BUTTON_TEXT, .text = text});
+  }
+}
+
+static void HomeButton_OnClick(VNode* node, VNodeEvent* event)
+{
+  UNUSED(event);
+  const char* page_id = v_node_data(node);
+  assert(page_id);
+
+  PageNavigator_Goto(page_id);
+}
+
+static void HomeButton_OnMouseOver(VNode* node, VNodeEvent* event)
+{
+  VNode* icon_box = v_node_child_at(node, 0);
+  VNode* label = v_node_child_at(node, 1);
+
+  switch (event->type) {
+    case V_NODE_EVENT_MOUSE_ENTER:
+      v_node_style_assign_class(node, CLS_HOME_BUTTON_HOVER);
+      v_node_style_assign_class(v_node_first_child(icon_box),
+                                CLS_HOME_BUTTON_ICON_HOVER);
+      v_node_style_assign_class(label, CLS_HOME_BUTTON_TEXT_HOVER);
+      break;
+    case V_NODE_EVENT_MOUSE_LEAVE:
+      v_node_style_assign_class(node, CLS_HOME_BUTTON);
+      v_node_style_assign_class(v_node_first_child(icon_box),
+                                CLS_HOME_BUTTON_ICON);
+      v_node_style_assign_class(label, CLS_HOME_BUTTON_TEXT);
+      break;
+    default:
+      break;
   }
 }
 
@@ -147,63 +196,5 @@ static void StyleSheet(void)
   vss_extend(S, CLS_HOME_BUTTON_TEXT_HOVER, CLS_HOME_BUTTON_TEXT)
   {
     vs_set_color(S, THEME_BACKGROUND_1);
-  }
-}
-
-static VNode* HomeButton(const HomeButtonData* data)
-{
-  const char* text = GetString(LOCALE_EN_US, data->string_id);
-  const char* icon_text = data->icon_text;
-  const char* page_id = data->page_id;
-
-  // clang-format off
-  return Box({
-    .sclass = CLS_HOME_BUTTON,
-    .data = (void*)page_id,
-    .on_click = &HomeButton_OnClick,
-    .on_mouse_enter = &HomeButton_OnMouseOver,
-    .on_mouse_leave = &HomeButton_OnMouseOver,
-    Children(
-      Box({
-        .sclass = CLS_HOME_BUTTON_ICON_BOX,
-        Children(
-          Text({.sclass = CLS_HOME_BUTTON_ICON, .content.text = icon_text})
-        )
-      }),
-      Text({.sclass = CLS_HOME_BUTTON_TEXT, .content.text = text})
-    )
-  });
-  // clang-format on
-}
-
-static void HomeButton_OnClick(VNode* node, VNodeEvent* event)
-{
-  UNUSED(event);
-  const char* page_id = v_node_data(node);
-  assert(page_id);
-
-  PageNavigator_Goto(page_id);
-}
-
-static void HomeButton_OnMouseOver(VNode* node, VNodeEvent* event)
-{
-  VNode* icon_box = v_node_child_at(node, 0);
-  VNode* label = v_node_child_at(node, 1);
-
-  switch (event->type) {
-    case V_NODE_EVENT_MOUSE_ENTER:
-      v_node_style_assign_class(node, CLS_HOME_BUTTON_HOVER);
-      v_node_style_assign_class(v_node_first_child(icon_box),
-                                CLS_HOME_BUTTON_ICON_HOVER);
-      v_node_style_assign_class(label, CLS_HOME_BUTTON_TEXT_HOVER);
-      break;
-    case V_NODE_EVENT_MOUSE_LEAVE:
-      v_node_style_assign_class(node, CLS_HOME_BUTTON);
-      v_node_style_assign_class(v_node_first_child(icon_box),
-                                CLS_HOME_BUTTON_ICON);
-      v_node_style_assign_class(label, CLS_HOME_BUTTON_TEXT);
-      break;
-    default:
-      break;
   }
 }

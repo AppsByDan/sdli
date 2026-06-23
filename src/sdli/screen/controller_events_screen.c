@@ -126,13 +126,19 @@ static const int BUTTON_GRID_SIZE = (int)u_arraylen(BUTTON_GRID);
 // private function declarations
 //
 
-static VNode* JoystickEvents(ControllerId controller_id, bool visible);
-static VNode* GamepadEvents(ControllerId controller_id, bool visible);
-static VNode* DirectionPadBlock(int hat_id, ControllerPovHatMask direction);
-static VNode* DirectionPad(int hat_id);
-static VNode* JoystickButton(int button_id);
+static void JoystickEvents(NN_CALLABLE,
+                           ControllerId controller_id,
+                           bool visible);
+static void GamepadEvents(NN_CALLABLE,
+                          ControllerId controller_id,
+                          bool visible);
+static void DirectionPadBlock(NN_CALLABLE,
+                              int hat_id,
+                              ControllerPovHatMask direction);
+static void DirectionPad(NN_CALLABLE, int hat_id);
+static void JoystickButton(NN_CALLABLE, int button_id);
 static VNode* JoystickButton_GetText(VNode* button);
-static VNode* JoystickAxis(int axis_id);
+static void JoystickAxis(NN_CALLABLE, int axis_id);
 static void OnJoystickControllerInputEvent(const ControllerInputEvent* event);
 static void OnGamepadControllerInputEvent(const ControllerInputEvent* event);
 static void OnNavigatorEvent(NavigatorEvent* event);
@@ -155,25 +161,26 @@ VNode* ControllerEventsScreen(void)
 {
   StyleSheet();
 
-  void* api_button_data = (void*)(intptr_t)CONTROLLER_API_JOYSTICK;
+  NN_BUILD_NEW(screen)
+  {
+    NN_BOX({.id = SCREENID_CONTROLLER_EVENTS, .sclass = CLS_EV_SCREEN})
+    {
+      NN_BOX({.sclass = CLS_EV_HEADER})
+      {
+        NN_TEXT({
+            .id = NID_CONTROLLER_NAME,
+            .sclass = CLS_EV_CONTROLLER_NAME,
+        });
 
-  // clang-format off
-  VNode* screen = Box({
-    .id = SCREENID_CONTROLLER_EVENTS,
-    .sclass = CLS_EV_SCREEN,
-    Children(
-      Box({
-        .sclass = CLS_EV_HEADER,
-        Children(
-          Text({.id = NID_CONTROLLER_NAME, .sclass = CLS_EV_CONTROLLER_NAME}),
-          ButtonWithId(NID_API_TOGGLE, "Joystick API", api_button_data, &ToggleApiButtonOnClick),
-          Button("Back", NULL, &BackButtonOnClick)
-        )
-      }),
-      Box({.id = NID_API_BOX, .sclass = CLS_EV_BODY}),
-    )
-  });
-  // clang-format on
+        void* api_button_data = (void*)(intptr_t)CONTROLLER_API_JOYSTICK;
+
+        NN_CALL(ButtonWithId, NID_API_TOGGLE, "Joystick API", api_button_data,
+                &ToggleApiButtonOnClick);
+        NN_CALL(Button, "Back", NULL, &BackButtonOnClick);
+      }
+      NN_BOX({.id = NID_API_BOX, .sclass = CLS_EV_BODY});
+    }
+  }
 
   return Navigable_Init(screen, &OnNavigatorEvent);
 }
@@ -227,8 +234,12 @@ static void OnNavigatorEvent(NavigatorEvent* event)
     BindString(NID_CONTROLLER_NAME, Controller_GetName(controller_id));
 
     v_node_remove_children(api_box);
-    v_node_append_child(api_box, JoystickEvents(controller_id, false));
-    v_node_append_child(api_box, GamepadEvents(controller_id, false));
+
+    NN_BUILD_APPEND(api_box)
+    {
+      NN_CALL(JoystickEvents, controller_id, false);
+      NN_CALL(GamepadEvents, controller_id, false);
+    }
 
     SetControllerApi(v_get_node_by_id(NID_API_TOGGLE), CONTROLLER_API_JOYSTICK);
   }
@@ -325,163 +336,141 @@ static void SetControllerApi(VNode* toggle, ControllerApi new_api)
   ControllerInputModel_Enable(controller_id, new_api, event_handler);
 }
 
-static VNode* JoystickEvents(ControllerId controller_id, bool visible)
+static void JoystickEvents(NN_CALLABLE,
+                           ControllerId controller_id,
+                           bool visible)
 {
   const int button_count = Controller_GetButtonCount(controller_id);
   const int hat_count = Controller_GetHatCount(controller_id);
   const int axis_count = Controller_GetAxisCount(controller_id);
-  VNode* box = Box({.id = NID_JOYSTICK_API, .sclass = CLS_EVJ_BOX});
 
-  v_node_set_visible(box, visible);
-
-  if (button_count > 0) {
-    VNode* group = Box({.sclass = CLS_EVJ_GROUP});
-
-    for (int i = 0; i < button_count; i++) {
-      v_node_append_child(group, JoystickButton(i));
+  NN_BOX({.id = NID_JOYSTICK_API, .sclass = CLS_EVJ_BOX, .hidden = !visible})
+  {
+    if (button_count > 0) {
+      NN_BOX({.sclass = CLS_EVJ_GROUP})
+      {
+        for (int i = 0; i < button_count; i++) {
+          NN_CALL(JoystickButton, i);
+        }
+      }
     }
 
-    v_node_append_child(box, group);
-  }
-
-  if (hat_count > 0) {
-    VNode* group = Box({.sclass = CLS_EVJ_GROUP});
-
-    for (int i = 0; i < hat_count; i++) {
-      v_node_append_child(group, DirectionPad(i));
+    if (hat_count > 0) {
+      NN_BOX({.sclass = CLS_EVJ_GROUP})
+      {
+        for (int i = 0; i < hat_count; i++) {
+          NN_CALL(DirectionPad, i);
+        }
+      }
     }
 
-    v_node_append_child(box, group);
-  }
-
-  if (axis_count > 0) {
-    VNode* group = Box({.sclass = CLS_EVJ_GROUP});
-
-    for (int i = 0; i < axis_count; i++) {
-      v_node_append_child(group, JoystickAxis(i));
+    if (axis_count > 0) {
+      NN_BOX({.sclass = CLS_EVJ_GROUP})
+      {
+        for (int i = 0; i < axis_count; i++) {
+          NN_CALL(JoystickAxis, i);
+        }
+      }
     }
-
-    v_node_append_child(box, group);
   }
-
-  return box;
 }
 
-static VNode* GamepadEvents(ControllerId controller_id, bool visible)
+static void GamepadEvents(NN_CALLABLE, ControllerId controller_id, bool visible)
 {
   UNUSED(controller_id);
   const int cols = BUTTON_GRID_ROW;
   const int rows = (BUTTON_GRID_SIZE + cols - 1) / cols;
-  VNode* box = Box({.id = NID_GAMEPAD_API, .sclass = CLS_EVG_BUTTON_GRID});
 
   // TODO: should be a static assert
   assert(BUTTON_GRID_SIZE % cols == 0);
 
-  v_node_set_visible(box, visible);
+  NN_BOX({.id = NID_GAMEPAD_API,
+          .sclass = CLS_EVG_BUTTON_GRID,
+          .hidden = !visible})
+  {
+    for (int r = 0; r < rows; r++) {
+      NN_BOX({.sclass = CLS_EVG_BUTTON_ROW})
+      {
+        for (int c = 0; c < cols; c++) {
+          const int idx = r * cols + c;
+          const StandardGamepadKey sgk = BUTTON_GRID[idx];
 
-  for (int r = 0; r < rows; r++) {
-    VNode* row = Box({.sclass = CLS_EVG_BUTTON_ROW});
+          NN_BOX({0})
+          {
+            if (sgk != SGK_INVALID) {
+              const bool has_mapping =
+                  Controller_HasMappingForKey(controller_id, sgk);
+              const char* text_class = has_mapping
+                                           ? CLS_EVJ_BUTTON_TEXT
+                                           : CLS_EVJ_BUTTON_TEXT_UNMAPPED;
+              const char* button_class =
+                  has_mapping ? CLS_EVG_BUTTON : CLS_EVG_BUTTON_UNMAPPED;
 
-    for (int c = 0; c < cols; c++) {
-      const int idx = r * cols + c;
-      const StandardGamepadKey sgk = BUTTON_GRID[idx];
-      VNode* button = Box({0});
+              v_node_set_id_fmt(NN_SELF(), GAMEPAD_BUTTON_ID_FMT, (int)sgk);
+              v_node_style_assign_class(NN_SELF(), button_class);
+              v_node_set_data(NN_SELF(), (void*)(intptr_t)has_mapping);
 
-      if (sgk != SGK_INVALID) {
-        const bool has_mapping =
-            Controller_HasMappingForKey(controller_id, sgk);
-        const char* text_class =
-            has_mapping ? CLS_EVJ_BUTTON_TEXT : CLS_EVJ_BUTTON_TEXT_UNMAPPED;
-        const char* button_class =
-            has_mapping ? CLS_EVG_BUTTON : CLS_EVG_BUTTON_UNMAPPED;
-        VNode* button_text = Text({
-            .sclass = text_class,
-            .content.text = StandardGamepadKey_ToString(sgk),
-        });
-
-        v_node_set_id_fmt(button, GAMEPAD_BUTTON_ID_FMT, (int)sgk);
-        v_node_style_assign_class(button, button_class);
-        v_node_set_data(button, (void*)(intptr_t)has_mapping);
-        v_node_append_child(button, button_text);
-      } else {
-        v_node_style_assign_class(button, CLS_EVG_BUTTON_PLACEHOLDER);
+              NN_TEXT({
+                  .sclass = text_class,
+                  .text = StandardGamepadKey_ToString(sgk),
+              });
+            } else {
+              v_node_style_assign_class(NN_SELF(), CLS_EVG_BUTTON_PLACEHOLDER);
+            }
+          }
+        }
       }
-
-      v_node_append_child(row, button);
     }
 
-    v_node_append_child(box, row);
+    NN_BOX({.sclass = CLS_EVG_AXIS_GROUP})
+    {
+      NN_BOX({.sclass = CLS_EVG_AXIS_BOX})
+      {
+        NN_BOX({.sclass = CLS_EVG_AXIS_KV_ITEM_FIRST})
+        {
+          NN_TEXT({.sclass = CLS_EVG_AXIS_KEY, .text = STR(SID_LEFT_TRIGGER)});
+          NN_TEXT({.id = NID_GAMEPAD_LEFT_TRIGGER_VALUE,
+                   .sclass = CLS_EVG_AXIS_VALUE});
+        }
+        NN_BOX({.sclass = CLS_EVG_AXIS_KV_ITEM})
+        {
+          NN_TEXT({.sclass = CLS_EVG_AXIS_KEY, .text = STR(SID_LEFT_JOYSTICK)});
+          NN_TEXT(
+              {.id = NID_GAMEPAD_LEFT_X_VALUE, .sclass = CLS_EVG_AXIS_VALUE});
+          NN_TEXT(
+              {.id = NID_GAMEPAD_LEFT_Y_VALUE, .sclass = CLS_EVG_AXIS_VALUE});
+        }
+      }
+
+      NN_BOX({
+          .sclass = CLS_EVG_AXIS_SPACER,
+      });
+
+      NN_BOX({.sclass = CLS_EVG_AXIS_BOX})
+      {
+        NN_BOX({.sclass = CLS_EVG_AXIS_KV_ITEM_FIRST})
+        {
+          NN_TEXT({.sclass = CLS_EVG_AXIS_KEY, .text = STR(SID_RIGHT_TRIGGER)});
+          NN_TEXT({.id = NID_GAMEPAD_RIGHT_TRIGGER_VALUE,
+                   .sclass = CLS_EVG_AXIS_VALUE});
+        }
+        NN_BOX({.sclass = CLS_EVG_AXIS_KV_ITEM})
+        {
+          NN_TEXT(
+              {.sclass = CLS_EVG_AXIS_KEY, .text = STR(SID_RIGHT_JOYSTICK)});
+          NN_TEXT(
+              {.id = NID_GAMEPAD_RIGHT_X_VALUE, .sclass = CLS_EVG_AXIS_VALUE});
+          NN_TEXT(
+              {.id = NID_GAMEPAD_RIGHT_Y_VALUE, .sclass = CLS_EVG_AXIS_VALUE});
+        }
+      }
+    }
   }
-
-  // clang-format off
-  VNode* gamepad_axis_group = Box({
-    .sclass = CLS_EVG_AXIS_GROUP,
-    Children(
-      Box({
-        .sclass = CLS_EVG_AXIS_BOX,
-        Children(
-          Box({
-            .sclass = CLS_EVG_AXIS_KV_ITEM_FIRST,
-            Children(
-              Text({
-                .sclass = CLS_EVG_AXIS_KEY,
-                .content.text = STR(SID_LEFT_TRIGGER),
-              }),
-              Text({
-                .id = NID_GAMEPAD_LEFT_TRIGGER_VALUE,
-                .sclass = CLS_EVG_AXIS_VALUE,
-              })
-            )
-          }),
-          Box({
-            .sclass = CLS_EVG_AXIS_KV_ITEM,
-            Children(
-              Text({.sclass = CLS_EVG_AXIS_KEY, .content.text = STR(SID_LEFT_JOYSTICK)}),
-              Text({.id = NID_GAMEPAD_LEFT_X_VALUE, .sclass = CLS_EVG_AXIS_VALUE}),
-              Text({.id = NID_GAMEPAD_LEFT_Y_VALUE, .sclass = CLS_EVG_AXIS_VALUE})
-            )
-          })
-        )
-      }),
-      Box({
-        .sclass = CLS_EVG_AXIS_SPACER,
-      }),
-      Box({
-        .sclass = CLS_EVG_AXIS_BOX,
-        Children(
-          Box({
-            .sclass = CLS_EVG_AXIS_KV_ITEM_FIRST,
-            Children(
-              Text({
-                .sclass = CLS_EVG_AXIS_KEY,
-                .content.text = STR(SID_RIGHT_TRIGGER),
-              }),
-              Text({
-                .id = NID_GAMEPAD_RIGHT_TRIGGER_VALUE,
-                .sclass = CLS_EVG_AXIS_VALUE,
-              })
-            )
-          }),
-          Box({
-            .sclass = CLS_EVG_AXIS_KV_ITEM,
-            Children(
-              Text({.sclass = CLS_EVG_AXIS_KEY, .content.text = STR(SID_RIGHT_JOYSTICK)}),
-              Text({.id = NID_GAMEPAD_RIGHT_X_VALUE, .sclass = CLS_EVG_AXIS_VALUE}),
-              Text({.id = NID_GAMEPAD_RIGHT_Y_VALUE, .sclass = CLS_EVG_AXIS_VALUE})
-            )
-          })
-        )
-      }),
-    ),
-  });
-  // clang-format on
-
-  v_node_append_child(box, gamepad_axis_group);
-
-  return box;
 }
 
-static VNode* DirectionPadBlock(int hat_id, ControllerPovHatMask direction)
+static void DirectionPadBlock(NN_CALLABLE,
+                              int hat_id,
+                              ControllerPovHatMask direction)
 {
   const char* text = "";
 
@@ -492,73 +481,53 @@ static VNode* DirectionPadBlock(int hat_id, ControllerPovHatMask direction)
     }
   }
 
-  // clang-format off
-  VNode* box = Box({
-    .sclass = CLS_DPAD_BLOCK,
-    Children(Text({
-      .sclass = CLS_DPAD_ICON,
-      .content.text = text,
-    }))
-  });
-  // clang-format on
-
-  v_node_set_id_fmt(box, JOYSTICK_HAT_DIRECTION_ID_FMT, hat_id, (int)direction);
-
-  return box;
+  NN_BOX({.sclass = CLS_DPAD_BLOCK})
+  {
+    v_node_set_id_fmt(NN_SELF(), JOYSTICK_HAT_DIRECTION_ID_FMT, hat_id,
+                      (int)direction);
+    NN_TEXT({.text = text, .sclass = CLS_DPAD_ICON});
+  }
 }
 
-static VNode* DirectionPad(int hat_id)
+static void DirectionPad(NN_CALLABLE, int hat_id)
 {
-  VNode* inner_block;
-  // clang-format off
-  VNode* dpad = Box({
-    .sclass = CLS_DPAD,
-    Children(
-      Box({
-        .sclass = CLS_DPAD_ROW,
-        Children(DirectionPadBlock(hat_id, POV_HAT_MASK_UP))
-      }),
-      Box({
-        .sclass = CLS_DPAD_ROW,
-        Children(
-          DirectionPadBlock(hat_id, POV_HAT_MASK_LEFT),
-          inner_block = Box({
-            .sclass = CLS_DPAD_BLOCK,
-            Children(Text({.sclass = CLS_TEXT}))
-          }),
-          DirectionPadBlock(hat_id, POV_HAT_MASK_RIGHT)
-        )
-      }),
-      Box({
-        .sclass = CLS_DPAD_ROW,
-        Children(DirectionPadBlock(hat_id, POV_HAT_MASK_DOWN))
-      })
-    )
-  });
-  // clang-format on
+  NN_BOX({.sclass = CLS_DPAD})
+  {
+    v_node_set_id_fmt(NN_SELF(), JOYSTICK_HAT_ID_FMT, hat_id);
+    NN_BOX({.sclass = CLS_DPAD_ROW})
+    {
+      NN_CALL(DirectionPadBlock, hat_id, POV_HAT_MASK_UP);
+    }
+    NN_BOX({.sclass = CLS_DPAD_ROW})
+    {
+      NN_CALL(DirectionPadBlock, hat_id, POV_HAT_MASK_LEFT);
+      NN_BOX({.sclass = CLS_DPAD_BLOCK})
+      {
+        NN_TEXT({.sclass = CLS_TEXT})
+        {
+          v_node_set_text_fmt(NN_SELF(), JOYSTICK_HAT_DISPLAY_FMT, hat_id);
+        }
+      }
+      NN_CALL(DirectionPadBlock, hat_id, POV_HAT_MASK_RIGHT);
+    }
 
-  v_node_set_id_fmt(dpad, JOYSTICK_HAT_ID_FMT, hat_id);
-  v_node_set_text_fmt(DirectionPadBlock_GetText(inner_block),
-                      JOYSTICK_HAT_DISPLAY_FMT, hat_id);
-
-  return dpad;
+    NN_BOX({.sclass = CLS_DPAD_ROW})
+    {
+      NN_CALL(DirectionPadBlock, hat_id, POV_HAT_MASK_DOWN);
+    }
+  }
 }
 
-static VNode* JoystickButton(int button_id)
+static void JoystickButton(NN_CALLABLE, int button_id)
 {
-  // clang-format off
-  VNode* button = Box({
-    .sclass = CLS_EVJ_BUTTON,
-    .data = (void*)(uintptr_t)button_id,
-    Children(Text({.sclass = CLS_EVJ_BUTTON_TEXT})),
-  });
-  // clang-format on
-
-  v_node_set_id_fmt(button, JOYSTICK_BUTTON_ID_FMT, button_id);
-  v_node_set_text_fmt(JoystickButton_GetText(button),
-                      JOYSTICK_BUTTON_DISPLAY_FMT, button_id);
-
-  return button;
+  NN_BOX({.sclass = CLS_EVJ_BUTTON, .data = (void*)(uintptr_t)button_id})
+  {
+    v_node_set_id_fmt(NN_SELF(), JOYSTICK_BUTTON_ID_FMT, button_id);
+    NN_TEXT({.sclass = CLS_EVJ_BUTTON_TEXT})
+    {
+      v_node_set_text_fmt(NN_SELF(), JOYSTICK_BUTTON_DISPLAY_FMT, button_id);
+    }
+  }
 }
 
 static VNode* JoystickButton_GetText(VNode* button)
@@ -566,23 +535,19 @@ static VNode* JoystickButton_GetText(VNode* button)
   return v_node_first_child(button);
 }
 
-static VNode* JoystickAxis(int axis_id)
+static void JoystickAxis(NN_CALLABLE, int axis_id)
 {
-  // clang-format off
-  VNode* axis = Box({
-    .sclass = CLS_EVJ_AXIS,
-    Children(
-      Text({.sclass = CLS_EVJ_AXIS_KEY}),
-      Text({.sclass = CLS_EVJ_AXIS_VALUE})
-    ),
-  });
-  // clang-format on
-
-  v_node_set_text_fmt(v_node_child_at(axis, 0), JOYSTICK_AXIS_DISPLAY_FMT,
-                      axis_id);
-  v_node_set_id_fmt(v_node_child_at(axis, 1), JOYSTICK_AXIS_ID_FMT, axis_id);
-
-  return axis;
+  NN_BOX({.sclass = CLS_EVJ_AXIS})
+  {
+    NN_TEXT({.sclass = CLS_EVJ_AXIS_KEY})
+    {
+      v_node_set_text_fmt(NN_SELF(), JOYSTICK_AXIS_DISPLAY_FMT, axis_id);
+    }
+    NN_TEXT({.sclass = CLS_EVJ_AXIS_VALUE})
+    {
+      v_node_set_id_fmt(NN_SELF(), JOYSTICK_AXIS_ID_FMT, axis_id);
+    }
+  }
 }
 
 static void UpdateGamepadAxisValue(int sgk_axis, float value)
