@@ -56,7 +56,7 @@ VNode* SystemPage(void)
         NN_CALL(KeyValueListItem, STR(SID_POWER_STATE), NID_POWER_STATE);
         NN_CALL(KeyValueListItem, STR(SID_BATTERY), NID_BATTERY);
         NN_CALL(KeyValueListItem, STR(SID_CPU_CORES), NID_CPU_CORES);
-        NN_CALL(KeyValueListItemLast, STR(SID_CACHE_LINE_SIZE),
+        NN_CALL(KeyValueListItem, STR(SID_CACHE_LINE_SIZE),
                 NID_CACHE_LINE_SIZE);
         NN_CALL(KeyValueListItemLast, STR(SID_SYSTEM_RAM), NID_SYSTEM_RAM);
       }
