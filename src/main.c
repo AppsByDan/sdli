@@ -1,5 +1,4 @@
 #include <sdli/app.h>
-#include <sdli/assets.h>
 #include <sdli/model/model.h>
 #include <sdli/screen/screen.h>
 #include <sdli/style.h>
@@ -27,7 +26,6 @@ int main(int argc, char** argv)
   State_Init();
   NodeNotation_Init();
 
-  LoadAssets();
   LoadStyleSheet();
 
   v_node_style_assign_class(v_root(), CLS_ROOT);

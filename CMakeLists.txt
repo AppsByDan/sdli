@@ -10,6 +10,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(SDLI_EXE sdli)
 set(SDLI_LIB sdli_lib)
+set(ASSETS assets)
 
 if (APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum MacOS deployment version")
@@ -76,12 +77,22 @@ target_compile_options(sdli_base INTERFACE
 )
 
 #
+# sdli_assets library
+#
+
+add_library(${ASSETS} STATIC
+  "src/assets/assets.c"
+)
+target_include_directories(${ASSETS} PUBLIC
+  "src/assets"
+)
+
+#
 # sdli static library
 #
 
-add_library(${SDLI_LIB}
+add_library(${SDLI_LIB} STATIC
   "src/sdli/app.c"
-  "src/sdli/assets.c"
   "src/sdli/node_notation.c"
   "src/sdli/strings.c"
   "src/sdli/style.c"
@@ -111,16 +122,14 @@ target_link_libraries(${SDLI_LIB} PUBLIC
   stc
   SDL3::SDL3
   sdli_base
+  ${ASSETS}
   harfbuzz_world
   $<$<NOT:$<C_COMPILER_ID:MSVC>>:m>
 )
 
-if (NOT WIN32)
-  target_link_libraries(${SDLI_LIB} PRIVATE incbin)
-endif()
-
 target_include_directories(${SDLI_LIB} PUBLIC
   "src"
+  "src/assets"
   "src3/vuid"
 )
 
@@ -130,8 +139,6 @@ target_compile_definitions(${SDLI_LIB} PUBLIC
   $<$<PLATFORM_ID:Windows>:_UNICODE>
   VUID_TEXT_ENGINE_HB
   VUID_TEXT_ENGINE_HB_SHAPER
-  # for incbin to work with assets
-  "SDLI_ASSETS_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/assets/\""
 )
 
 set_target_properties(${SDLI_LIB} PROPERTIES OUTPUT_NAME "sdli")
@@ -142,7 +149,6 @@ set_target_properties(${SDLI_LIB} PROPERTIES OUTPUT_NAME "sdli")
 
 add_executable(${SDLI_EXE}
   "src/main.c"
-  $<$<PLATFORM_ID:Windows>:assets/assets.rc>
 )
 
 if (WIN32)

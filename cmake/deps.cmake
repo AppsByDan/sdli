@@ -28,23 +28,6 @@ target_sources(stc PRIVATE
 target_include_directories(stc PUBLIC "${stc_dep_SOURCE_DIR}/include")
 
 #
-# interface target: incbin
-#
-
-if (NOT WIN32)
-  FetchContent_Declare(
-      incbin_dep
-      GIT_REPOSITORY https://github.com/graphitemaster/incbin
-      GIT_TAG 22061f51fe9f2f35f061f85c2b217b55dd75310d
-  )
-
-  FetchContent_MakeAvailable(incbin_dep)
-
-  add_library(incbin INTERFACE)
-  target_include_directories(incbin INTERFACE "${incbin_dep_SOURCE_DIR}")
-endif()
-
-#
 # SDL3
 #
 

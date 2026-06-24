@@ -1,6 +1,6 @@
 #include "style.h"
 
-#include <sdli/assets.h>
+#include <assets.h>
 #include <sdli/util.h>
 
 //
@@ -9,11 +9,11 @@
 
 void LoadStyleSheet(void)
 {
-  v_add_font_mem(FONT_NORMAL, SDLI_TTF.data, SDLI_TTF.size,
+  v_add_font_mem(FONT_NORMAL, asset_font_regular_ttf,
+                 asset_font_regular_ttf_len, V_MEMORY_MODE_READONLY);
+  v_add_font_mem(FONT_BOLD, asset_font_bold_ttf, asset_font_bold_ttf_len,
                  V_MEMORY_MODE_READONLY);
-  v_add_font_mem(FONT_BOLD, SDLI_TTF_BOLD.data, SDLI_TTF_BOLD.size,
-                 V_MEMORY_MODE_READONLY);
-  v_add_font_mem(FONT_ICON, SDLI_TTF_ICON.data, SDLI_TTF_ICON.size,
+  v_add_font_mem(FONT_ICON, asset_font_icon_ttf, asset_font_icon_ttf_len,
                  V_MEMORY_MODE_READONLY);
 
   vss_with(S, CLS_ROOT)
