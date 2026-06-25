@@ -1,7 +1,7 @@
 #ifndef SDLI_WIDGET_H
 #define SDLI_WIDGET_H
 
-#include <sdli/controller-fwd.h>
+#include <sdli/controller_fwd.h>
 #include <sdli/node_notation.h>
 #include <sdli/strings.h>
 

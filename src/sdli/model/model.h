@@ -17,7 +17,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include <sdli/controller-fwd.h>
+#include <sdli/controller_fwd.h>
 
 //
 // types
