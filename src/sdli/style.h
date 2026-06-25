@@ -53,6 +53,8 @@
 #define CLS_BUTTON_HOVER "btn-hover"
 #define CLS_BUTTON_TEXT "btn-text"
 #define CLS_BUTTON_TEXT_HOVER "btn-text-hover"
+#define CLS_BUTTON_STRETCH "btn-stretch"
+#define CLS_BUTTON_STRETCH_HOVER "btn-stretch-hover"
 #define CLS_LIST "list"
 #define CLS_LIST_ITEM "li"
 #define CLS_LIST_ITEM_LAST "li-last"
@@ -61,6 +63,8 @@
 #define CLS_SCROLLABLE "sbox"
 #define CLS_SCROLLABLE_LIST "slist"
 #define CLS_OVERLAY "overlay"
+#define CLS_OVERLAY_TITLE "overlay-title"
+#define CLS_OVERLAY_BODY_TEXT "overlay-body-text"
 #define CLS_OVERLAY_LAYER "overlay-layer"
 // TODO: temporary
 #define CLS_BUTTON_ROW "btn-group"

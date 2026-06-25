@@ -6,6 +6,7 @@
 
 #include <SDL3/SDL.h>
 #include <stc/common.h>
+#include <stc/cstr.h>
 
 #include <vuid_sdl3.h>
 #include <vuid_sdl3_renderer.h>
@@ -44,7 +45,11 @@ typedef struct App {
   SDL_Window* window;
   SDL_Renderer* renderer;
   event_map event_listeners;
+  cstr file_dialog_filename;
+  Uint32 file_dialog_sdl_event_type;
+  int file_dialog_event_type;
   bool is_running;
+  bool is_file_dialog_showing;
 } App;
 
 //
@@ -54,7 +59,10 @@ typedef struct App {
 static SDL_Window* SCreateWindow(const char* title, int width, int height);
 static SDL_Renderer* SCreateRenderer(SDL_Window* window);
 static void DispatchEvent(int event_type, void* event_data);
-
+static void DialogFileCallback(void* userdata,
+                               const char* const* filelist,
+                               int filter);
+static void HandleFileDialogResult(App* app, FileDialogResult result);
 //
 // global state
 //
@@ -74,6 +82,13 @@ bool App_Init(void)
 
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     SLogCallError("SDL_Init(SDL_INIT_VIDEO)");
+    goto error;
+  }
+
+  g_app.file_dialog_sdl_event_type = SDL_RegisterEvents(1);
+
+  if (g_app.file_dialog_sdl_event_type == 0) {
+    SLogCallError("SDL_RegisterEvents");
     goto error;
   }
 
@@ -138,6 +153,8 @@ void App_Shutdown(void)
 {
   SLog("%s", FN_NAME);
 
+  cstr_drop(&g_app.file_dialog_filename);
+
   v_sdl3_renderer_shutdown();
   v_sdl3_shutdown();
   v_quit();
@@ -168,7 +185,10 @@ bool App_ProcessEvents(void)
         break;
       default:
         v_sdl3_process_event(&event);
-        if (event.type < UINT32_MAX) {
+
+        if (event.type == g_app.file_dialog_sdl_event_type) {
+          HandleFileDialogResult(&g_app, (FileDialogResult)event.user.code);
+        } else if (event.type < UINT32_MAX) {
           DispatchEvent((int)event.type, &event);
         }
         break;
@@ -256,9 +276,22 @@ void App_RemoveEventListener(int event_type, EventListener listener)
   }
 }
 
-void App_CopyToClipboard(const char* text)
+void App_ShowOpenFileDialog(void)
 {
-  SDL_SetClipboardText(text);
+  assert(!g_app.is_file_dialog_showing);
+  g_app.is_file_dialog_showing = true;
+  g_app.file_dialog_event_type = EVT_OPEN_FILE_DIALOG_RESULT;
+  SDL_ShowOpenFileDialog(&DialogFileCallback, &g_app, g_app.window, NULL, 0,
+                         NULL, false);
+}
+
+void App_ShowSaveFileDialog(void)
+{
+  assert(!g_app.is_file_dialog_showing);
+  g_app.is_file_dialog_showing = true;
+  g_app.file_dialog_event_type = EVT_SAVE_FILE_DIALOG_RESULT;
+  SDL_ShowSaveFileDialog(&DialogFileCallback, &g_app, g_app.window, NULL, 0,
+                         NULL);
 }
 
 //
@@ -356,4 +389,41 @@ static void DispatchEvent(int event_type, void* event_data)
 
     group->second.needs_compaction = false;
   }
+}
+
+static void DialogFileCallback(void* userdata,
+                               const char* const* filelist,
+                               int filter)
+{
+  UNUSED(filter);
+  App* app = userdata;
+  SDL_Event result;
+  FileDialogResult code;
+
+  if (!filelist) {
+    code = FILE_DIALOG_RESULT_ERROR;
+  } else if (*filelist == NULL) {
+    code = FILE_DIALOG_RESULT_CANCELLED;
+  } else {
+    code = FILE_DIALOG_RESULT_SUCCESS;
+    cstr_assign(&app->file_dialog_filename, *filelist);
+  }
+
+  result.user.type = app->file_dialog_sdl_event_type;
+  result.user.code = (Sint32)code;
+
+  SDL_PushEvent(&result);
+}
+
+static void HandleFileDialogResult(App* app, FileDialogResult result)
+{
+  FileDialogResultEvent app_event = {
+      .filename = result == FILE_DIALOG_RESULT_SUCCESS
+                      ? cstr_str(&app->file_dialog_filename)
+                      : NULL,
+      .result = result,
+  };
+
+  app->is_file_dialog_showing = false;
+  DispatchEvent(app->file_dialog_event_type, &app_event);
 }

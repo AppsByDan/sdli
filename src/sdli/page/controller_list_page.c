@@ -1,10 +1,13 @@
 #include "page.h"
 
+#include <sdli/app.h>
 #include <sdli/model/model.h>
 #include <sdli/screen/screen.h>
 #include <sdli/style.h>
 #include <sdli/util.h>
 #include <sdli/widget/widget.h>
+
+#include <stc/cstr.h>
 
 #define NID_CONTROLLER_LIST "clp:clist"
 #define CONTROLLER_ID_FMT "ctrl:%" PRIu32
@@ -16,18 +19,90 @@
 static void ControllerListItem(NN_CALLABLE, ControllerId id);
 static void OnNavigatorEvent(NavigatorEvent* event);
 static void OnControllerChangeEvent(const ControllerChangeEvent* event);
-static void InfoButtonOnClick(VNode* node, VNodeEvent* event);
-static void EventsButtonOnClick(VNode* node, VNodeEvent* event);
-static void ConfigureButtonOnClick(VNode* node, VNodeEvent* event);
-static void RemoveMappingButtonOnClick(VNode* node, VNodeEvent* event);
-static void CopyMappingButtonOnClick(VNode* node, VNodeEvent* event);
-static void RumbleButtonOnClick(VNode* node, VNodeEvent* event);
-static void ReloadMappingsButtonOnClick(VNode* node, VNodeEvent* event);
-static void LoadMappingsFromClipboardButtonOnClick(VNode* node,
-                                                   VNodeEvent* event);
-static void ExportMappingsToClipboardButtonOnClick(VNode* node,
-                                                   VNodeEvent* event);
+static void OnFileDialogResult(int event_type,
+                               void* event_data,
+                               void* user_data);
+static void ReloadMappingsOverlay(void);
+static void LoadMappingsOverlay(void);
+static void ExportMappingsOverlay(void);
+static void WaitOverlay(const char* title);
+static void LoadMappingsResultsOverlay(int count);
+static void ExportMappingsResultOverlay(bool success);
 static ControllerId GetControllerId(VNode* node);
+
+//
+// private node event handlers
+//
+
+// clang-format off
+OnClickInline(Info, {
+  State_SelectController(GetControllerId(node));
+  PageNavigator_Goto(PAGEID_CONTROLLER_INFO);
+})
+
+OnClickInline(Events, {
+  State_SelectController(GetControllerId(node));
+  ScreenNavigator_Goto(SCREENID_CONTROLLER_EVENTS);
+})
+
+OnClickInline(Configure, {
+  State_SelectController(GetControllerId(node));
+  ScreenNavigator_Goto(SCREENID_CONTROLLER_CONFIG);
+})
+
+OnClickInline(Rumble, {
+  Controller_Rumble(GetControllerId(node));
+})
+
+OnClickInline(RemoveMapping, {
+  Controller_RemoveMapping(GetControllerId(node));
+})
+
+OnClickInline(CopyMapping, {
+  SystemModel_CopyToClipboard(
+      Controller_GetMappingString(GetControllerId(node)));
+})
+
+OnClickInline(ReloadMappings, {
+  ReloadMappingsOverlay();
+})
+
+OnClickInline(LoadMappings, {
+  LoadMappingsOverlay();
+})
+
+OnClickInline(ExportMappings, {
+  ExportMappingsOverlay();
+})
+
+OnClickInline(ReloadMappingsOverlayOk, {
+  ControllerListModel_ReloadMappings();
+  Overlay_Dismiss();
+})
+
+OnClickInline(LoadMappingsFromClipboard, {
+  int count = ControllerListModel_LoadMappingsFromClipboard();
+  Overlay_Dismiss();
+  LoadMappingsResultsOverlay(count);
+})
+
+OnClickInline(LoadMappingsFromFile, {
+  App_ShowOpenFileDialog();
+  Overlay_Dismiss();
+  WaitOverlay("Load Mappings");
+})
+
+OnClickInline(ExportMappingsToClipboard, {
+  ControllerListModel_ExportMappingsToClipboard();
+  Overlay_Dismiss();
+})
+
+OnClickInline(ExportMappingsToFile, {
+  App_ShowSaveFileDialog();
+  Overlay_Dismiss();
+  WaitOverlay("Export Mappings");
+})
+// clang-format on
 
 //
 // public function implementation
@@ -80,17 +155,17 @@ static void ControllerListItem(NN_CALLABLE, ControllerId id)
     void* button_data = (void*)(uintptr_t)id;
 
     // TODO: localize
-    NN_CALL(Button, "Events", button_data, &EventsButtonOnClick);
-    NN_CALL(Button, "Configure", button_data, &ConfigureButtonOnClick);
-    NN_CALL(Button, "I", button_data, &InfoButtonOnClick);
+    NN_CALL(Button, "Events", button_data, &Events_OnClick);
+    NN_CALL(Button, "Configure", button_data, &Configure_OnClick);
+    NN_CALL(Button, "I", button_data, &Info_OnClick);
 
     if (Controller_HasRumble(id)) {
-      NN_CALL(Button, "R", button_data, &RumbleButtonOnClick);
+      NN_CALL(Button, "R", button_data, &Rumble_OnClick);
     }
 
     if (Controller_HasMapping(id)) {
-      NN_CALL(Button, "RM", button_data, &RemoveMappingButtonOnClick);
-      NN_CALL(Button, "CM", button_data, &CopyMappingButtonOnClick);
+      NN_CALL(Button, "RM", button_data, &RemoveMapping_OnClick);
+      NN_CALL(Button, "CM", button_data, &CopyMapping_OnClick);
     }
   }
 }
@@ -111,11 +186,11 @@ static void OnNavigatorEvent(NavigatorEvent* event)
   {
     NN_BOX({.sclass = CLS_BUTTON_ROW})
     {
-      NN_CALL(Button, "Reload Mappings", NULL, &ReloadMappingsButtonOnClick);
-      NN_CALL(Button, "Load Mappings (Clipboard)", NULL,
-              &LoadMappingsFromClipboardButtonOnClick);
-      NN_CALL(Button, "Export Mappings (Clipboard)", NULL,
-              &ExportMappingsToClipboardButtonOnClick);
+      // TODO: need at least 1 connected controller with mapping for export
+      // TODO: reload and load dont make sense with no controllers connected
+      NN_CALL(Button, "Reload mappings", NULL, &ReloadMappings_OnClick);
+      NN_CALL(Button, "Load mappings", NULL, &LoadMappings_OnClick);
+      NN_CALL(Button, "Export mappings", NULL, &ExportMappings_OnClick);
     }
 
     // TODO: show message for no controllers
@@ -131,6 +206,8 @@ static void OnNavigatorEvent(NavigatorEvent* event)
   }
 
   ControllerListModel_AddChangeEventListener(&OnControllerChangeEvent);
+  App_AddEventListener(EVT_OPEN_FILE_DIALOG_RESULT, &OnFileDialogResult, NULL);
+  App_AddEventListener(EVT_SAVE_FILE_DIALOG_RESULT, &OnFileDialogResult, NULL);
 }
 
 static void OnControllerChangeEvent(const ControllerChangeEvent* event)
@@ -168,64 +245,95 @@ static void OnControllerChangeEvent(const ControllerChangeEvent* event)
   }
 }
 
-static void InfoButtonOnClick(VNode* node, VNodeEvent* event)
+static void OnFileDialogResult(int event_type,
+                               void* event_data,
+                               void* user_data)
 {
-  UNUSED(event);
-  State_SelectController(GetControllerId(node));
-  PageNavigator_Goto(PAGEID_CONTROLLER_INFO);
+  UNUSED(event_type, user_data);
+  Overlay_Dismiss();
+
+  if (event_type == EVT_OPEN_FILE_DIALOG_RESULT) {
+    int count = ControllerListModel_LoadMappingsFromFile(
+        ((FileDialogResultEvent*)event_data)->filename);
+    LoadMappingsResultsOverlay(count);
+  } else if (event_type == EVT_SAVE_FILE_DIALOG_RESULT) {
+    bool result = ControllerListModel_ExportMappingsToFile(
+        ((FileDialogResultEvent*)event_data)->filename);
+
+    ExportMappingsResultOverlay(result);
+  }
 }
 
-static void EventsButtonOnClick(VNode* node, VNodeEvent* event)
+static void ReloadMappingsOverlay(void)
 {
-  UNUSED(event);
-  State_SelectController(GetControllerId(node));
-  ScreenNavigator_Goto(SCREENID_CONTROLLER_EVENTS);
+  static const OverlayButton buttons[] = {
+      {.label = "Reload", .on_click = &ReloadMappingsOverlayOk_OnClick},
+      {.label = "Cancel", .on_click = &Overlay_Cancel},
+  };
+
+  Overlay_Show("Reload Mappings",
+               "Reset the SDL Gamepad mapping database to its initial state. "
+               "All controller configurations will be lost.",
+               buttons, u_arraylen(buttons));
 }
 
-static void ConfigureButtonOnClick(VNode* node, VNodeEvent* event)
+static void LoadMappingsOverlay(void)
 {
-  UNUSED(event);
-  State_SelectController(GetControllerId(node));
-  ScreenNavigator_Goto(SCREENID_CONTROLLER_CONFIG);
+  static const OverlayButton buttons[] = {
+      {.label = "From file...", .on_click = &LoadMappingsFromFile_OnClick},
+      {.label = "From clipboard",
+       .on_click = &LoadMappingsFromClipboard_OnClick},
+      {.label = "Cancel", .on_click = &Overlay_Cancel},
+  };
+
+  Overlay_Show("Load Mappings", "Description.", buttons, u_arraylen(buttons));
 }
 
-static void RemoveMappingButtonOnClick(VNode* node, VNodeEvent* event)
+static void ExportMappingsOverlay(void)
 {
-  UNUSED(event);
-  Controller_RemoveMapping(GetControllerId(node));
+  static const OverlayButton buttons[] = {
+      {.label = "Save to file...", .on_click = &ExportMappingsToFile_OnClick},
+      {.label = "Copy to clipboard",
+       .on_click = &ExportMappingsToClipboard_OnClick},
+      {.label = "Cancel", .on_click = &Overlay_Cancel},
+  };
+
+  Overlay_Show(
+      "Export Mappings",
+      "Export Gamepad mappings to a file or the clipboard in CSV format.",
+      buttons, u_arraylen(buttons));
 }
 
-static void CopyMappingButtonOnClick(VNode* node, VNodeEvent* event)
+static void WaitOverlay(const char* title)
 {
-  UNUSED(event);
-  SystemModel_CopyToClipboard(
-      Controller_GetMappingString(GetControllerId(node)));
+  // TODO: different type of overlay?
+  Overlay_Show(title, "Waiting for system file dialog.", NULL, 0);
 }
 
-static void RumbleButtonOnClick(VNode* node, VNodeEvent* event)
+static void LoadMappingsResultsOverlay(int count)
 {
-  UNUSED(event);
-  Controller_Rumble(GetControllerId(node));
+  // TODO: error message, if possible? (SDL apis dont always return error
+  // messages for loading mappings)
+  cstr text = cstr_from_fmt("Mappings processed: %i", count);
+
+  static const OverlayButton buttons[] = {
+      {.label = "OK", .on_click = &Overlay_Cancel},
+  };
+
+  Overlay_Show("Load Mappings", cstr_str(&text), buttons, u_arraylen(buttons));
+  cstr_drop(&text);
 }
 
-static void ReloadMappingsButtonOnClick(VNode* node, VNodeEvent* event)
+static void ExportMappingsResultOverlay(bool success)
 {
-  UNUSED(node, event);
-  ControllerListModel_ReloadMappings();
-}
+  static const OverlayButton buttons[] = {
+      {.label = "OK", .on_click = &Overlay_Cancel},
+  };
 
-static void LoadMappingsFromClipboardButtonOnClick(VNode* node,
-                                                   VNodeEvent* event)
-{
-  UNUSED(node, event);
-  ControllerListModel_LoadMappingsFromClipboard();
-}
-
-static void ExportMappingsToClipboardButtonOnClick(VNode* node,
-                                                   VNodeEvent* event)
-{
-  UNUSED(node, event);
-  ControllerListModel_ExportMappingsToClipboard();
+  Overlay_Show("Export Mappings",
+               success ? "Mappings exported successfully."
+                       : "Failed to export mappings.",
+               buttons, u_arraylen(buttons));
 }
 
 static ControllerId GetControllerId(VNode* node)

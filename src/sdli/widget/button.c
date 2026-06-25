@@ -7,7 +7,29 @@
 // private function declarations
 //
 
-static void OnMouseMove(VNode* node, VNodeEvent* event);
+static void ButtonImpl(NN_CALLABLE,
+                       const char* id,
+                       const char* label,
+                       void* data,
+                       const char* button_class,
+                       VNodeEventListener on_click,
+                       VNodeEventListener on_mouse_move);
+static void OnMouseMoveImpl(VNode* node,
+                            VNodeEvent* event,
+                            const char* button_class,
+                            const char* button_hover_class);
+
+//
+// private node event handlers
+//
+
+OnMouseOverInline(Button, {
+  OnMouseMoveImpl(node, event, CLS_BUTTON, CLS_BUTTON_HOVER);
+})
+
+OnMouseOverInline(ButtonStretch, {
+  OnMouseMoveImpl(node, event, CLS_BUTTON_STRETCH, CLS_BUTTON_STRETCH_HOVER);
+})
 
 //
 // public function implementation
@@ -18,7 +40,8 @@ void Button(NN_CALLABLE,
             void* data,
             VNodeEventListener on_click)
 {
-  ButtonWithId(NN_STATE(), NULL, label, data, on_click);
+  ButtonImpl(NN_STATE(), NULL, label, data, CLS_BUTTON, on_click,
+             &Button_OnMouseOver);
 }
 
 void ButtonWithId(NN_CALLABLE,
@@ -27,17 +50,17 @@ void ButtonWithId(NN_CALLABLE,
                   void* data,
                   VNodeEventListener on_click)
 {
-  NN_BOX({
-      .id = id,
-      .data = data,
-      .sclass = CLS_BUTTON,
-      .on_mouse_enter = &OnMouseMove,
-      .on_mouse_leave = &OnMouseMove,
-      .on_click = on_click,
-  })
-  {
-    NN_TEXT({.text = label, .sclass = CLS_BUTTON_TEXT});
-  }
+  ButtonImpl(NN_STATE(), id, label, data, CLS_BUTTON, on_click,
+             &Button_OnMouseOver);
+}
+
+void ButtonStretch(NN_CALLABLE,
+                   const char* label,
+                   void* data,
+                   VNodeEventListener on_click)
+{
+  ButtonImpl(NN_STATE(), NULL, label, data, CLS_BUTTON_STRETCH, on_click,
+             &ButtonStretch_OnMouseOver);
 }
 
 void Button_SetLabel(VNode* node, const char* text)
@@ -49,13 +72,37 @@ void Button_SetLabel(VNode* node, const char* text)
 // private function implementation
 //
 
-static void OnMouseMove(VNode* node, VNodeEvent* event)
+static void ButtonImpl(NN_CALLABLE,
+                       const char* id,
+                       const char* label,
+                       void* data,
+                       const char* button_class,
+                       VNodeEventListener on_click,
+                       VNodeEventListener on_mouse_move)
+{
+  NN_BOX({
+      .id = id,
+      .data = data,
+      .sclass = button_class,
+      .on_mouse_enter = on_mouse_move,
+      .on_mouse_leave = on_mouse_move,
+      .on_click = on_click,
+  })
+  {
+    NN_TEXT({.text = label, .sclass = CLS_BUTTON_TEXT});
+  }
+}
+
+static void OnMouseMoveImpl(VNode* node,
+                            VNodeEvent* event,
+                            const char* button_class,
+                            const char* button_hover_class)
 {
   if (event->type == V_NODE_EVENT_MOUSE_ENTER) {
-    v_node_style_assign_class(node, CLS_BUTTON_HOVER);
+    v_node_style_assign_class(node, button_hover_class);
     v_node_style_assign_class(v_node_child_at(node, 0), CLS_BUTTON_TEXT_HOVER);
   } else if (event->type == V_NODE_EVENT_MOUSE_LEAVE) {
-    v_node_style_assign_class(node, CLS_BUTTON);
+    v_node_style_assign_class(node, button_class);
     v_node_style_assign_class(v_node_child_at(node, 0), CLS_BUTTON_TEXT);
   }
 }

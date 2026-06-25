@@ -43,7 +43,16 @@
 //
 
 static void OnNavigatorEvent(NavigatorEvent* event);
-static void OnBackButtonClick(VNode* node, VNodeEvent* event);
+
+//
+// private node event handlers
+//
+
+// clang-format off
+OnClickInline(Back, {
+  PageNavigator_Goto(PAGEID_CONTROLLER_LIST);
+})
+// clang-format on
 
 //
 // public function implementation
@@ -55,7 +64,7 @@ VNode* ControllerInfoPage(void)
   {
     NN_BOX({.id = PAGEID_CONTROLLER_INFO, .sclass = CLS_PAGE})
     {
-      NN_CALL(Button, "Back", NULL, &OnBackButtonClick);
+      NN_CALL(Button, "Back", NULL, &Back_OnClick);
 
       NN_TEXT({
           .text = STR(SID_CONTROLLER_INFO),
@@ -213,11 +222,4 @@ static void OnNavigatorEvent(NavigatorEvent* event)
       }
     }
   }
-}
-
-static void OnBackButtonClick(VNode* node, VNodeEvent* event)
-{
-  UNUSED(node, event);
-  // TODO: this should be a back navigate, not a goto
-  PageNavigator_Goto(PAGEID_CONTROLLER_LIST);
 }

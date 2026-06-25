@@ -35,6 +35,7 @@ VNode* PageNavigator_Init(VNode* node)
 
 void PageNavigator_Goto(const char* id)
 {
+  assert(id);
   VNode* navigator = v_get_node_by_id(NID_PAGE_NAVIGATOR);
   assert(navigator);
 

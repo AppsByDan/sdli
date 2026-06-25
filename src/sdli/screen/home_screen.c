@@ -43,9 +43,43 @@ static const size_t HOME_BUTTON_SIZE = u_arraylen(HOME_BUTTONS);
 
 static void StyleSheet(void);
 static void HomeButton(NN_CALLABLE, const HomeButtonData* data);
-static void HomeButton_OnClick(VNode* node, VNodeEvent* event);
-static void HomeButton_OnMouseOver(VNode* node, VNodeEvent* event);
 static void OnNavigatorEvent(NavigatorEvent* event);
+
+//
+// private node event handlers
+//
+
+// clang-format off
+OnClickInline(HomeButton, {
+  PageNavigator_Goto((const char*)v_node_data(node));
+})
+
+OnMouseOverInline(HomeButton, {
+  const char* button_class;
+  const char* icon_class;
+  const char* text_class;
+
+  if (event->type == V_NODE_EVENT_MOUSE_ENTER) {
+    button_class = CLS_HOME_BUTTON_HOVER;
+    icon_class = CLS_HOME_BUTTON_ICON_HOVER;
+    text_class = CLS_HOME_BUTTON_TEXT_HOVER;
+  } else if (event->type == V_NODE_EVENT_MOUSE_LEAVE) {
+    button_class = CLS_HOME_BUTTON;
+    icon_class = CLS_HOME_BUTTON_ICON;
+    text_class = CLS_HOME_BUTTON_TEXT;
+  } else {
+    return;
+  }
+
+  VNode* icon_box = v_node_child_at(node, 0);
+  VNode* label = v_node_child_at(node, 1);
+
+  v_node_style_assign_class(node, button_class);
+  v_node_style_assign_class(v_node_first_child(icon_box),
+                            icon_class);
+  v_node_style_assign_class(label, text_class);
+})
+// clang-format on
 
 //
 // public function implementation
@@ -102,38 +136,6 @@ static void HomeButton(NN_CALLABLE, const HomeButtonData* data)
       NN_TEXT({.sclass = CLS_HOME_BUTTON_ICON, .text = icon_text});
     }
     NN_TEXT({.sclass = CLS_HOME_BUTTON_TEXT, .text = text});
-  }
-}
-
-static void HomeButton_OnClick(VNode* node, VNodeEvent* event)
-{
-  UNUSED(event);
-  const char* page_id = v_node_data(node);
-  assert(page_id);
-
-  PageNavigator_Goto(page_id);
-}
-
-static void HomeButton_OnMouseOver(VNode* node, VNodeEvent* event)
-{
-  VNode* icon_box = v_node_child_at(node, 0);
-  VNode* label = v_node_child_at(node, 1);
-
-  switch (event->type) {
-    case V_NODE_EVENT_MOUSE_ENTER:
-      v_node_style_assign_class(node, CLS_HOME_BUTTON_HOVER);
-      v_node_style_assign_class(v_node_first_child(icon_box),
-                                CLS_HOME_BUTTON_ICON_HOVER);
-      v_node_style_assign_class(label, CLS_HOME_BUTTON_TEXT_HOVER);
-      break;
-    case V_NODE_EVENT_MOUSE_LEAVE:
-      v_node_style_assign_class(node, CLS_HOME_BUTTON);
-      v_node_style_assign_class(v_node_first_child(icon_box),
-                                CLS_HOME_BUTTON_ICON);
-      v_node_style_assign_class(label, CLS_HOME_BUTTON_TEXT);
-      break;
-    default:
-      break;
   }
 }
 

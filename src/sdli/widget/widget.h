@@ -35,6 +35,12 @@ typedef struct NavigatorEvent {
   Direction direction;
 } NavigatorEvent;
 
+typedef struct OverlayButton {
+  const char* label;
+  void* data;
+  VNodeEventListener on_click;
+} OverlayButton;
+
 typedef VNode* (*CreateNavigableFn)(const char* id);
 typedef void (*OnNavigatorEventFn)(NavigatorEvent* event);
 
@@ -93,6 +99,10 @@ void ButtonWithId(NN_CALLABLE,
                   const char* label,
                   void* data,
                   VNodeEventListener on_click);
+void ButtonStretch(NN_CALLABLE,
+                   const char* label,
+                   void* data,
+                   VNodeEventListener on_click);
 void Button_SetLabel(VNode* node, const char* text);
 
 /*
@@ -103,10 +113,15 @@ void Button_SetLabel(VNode* node, const char* text);
 
 /* Create a new overlay layer for attachment to the root. */
 VNode* OverlayLayer(void);
-/* Show an overlay. The style of the overlay is defined by the caller. */
-void Overlay_Show(VNode* overlay, bool modal);
-/* Dismiss the currently shown overlay. */
+/* Show a modal overlay with a title, body and list of buttons. */
+void Overlay_Show(const char* title,
+                  const char* body,
+                  const OverlayButton* buttons,
+                  size_t button_count);
+/* Dismiss the current overlay. */
 void Overlay_Dismiss(void);
+/* Dismiss the current overlay as an OnClick handler. */
+void Overlay_Cancel(VNode* node, VNodeEvent* event);
 
 /*
  * State is global UI information that is needed between pages and screens, like

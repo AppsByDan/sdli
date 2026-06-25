@@ -179,6 +179,7 @@ static void DispatchControllerChangeEvent(ControllerId id,
 static bool ReadString(csview* src, csview* out, int ch);
 static bool FindMappingNameIndex(csview name, int* out_index);
 static GamepadMapping GamepadMapping_Init(csview value, int name_index);
+static cstr ControllerMappingsToString(void);
 
 //
 // global state
@@ -314,22 +315,28 @@ int ControllerListModel_LoadMappingsFromClipboard(void)
   return result;
 }
 
+int ControllerListModel_LoadMappingsFromFile(const char* filename)
+{
+  // TODO: this can return -1
+  // TODO: log sdl error?
+  return SDL_AddGamepadMappingsFromIO(SDL_IOFromFile(filename, "r"), true);
+}
+
 void ControllerListModel_ExportMappingsToClipboard(void)
 {
-  cstr builder = cstr_init();
+  cstr mappings = ControllerMappingsToString();
+  SystemModel_CopyToClipboard(cstr_str(&mappings));
+  cstr_drop(&mappings);
+}
 
-  c_foreach(it, controller_map, g_controller_list_model.controllers)
-  {
-    const char* mapping = Controller_GetMappingString(it.ref->first);
+bool ControllerListModel_ExportMappingsToFile(const char* filename)
+{
+  cstr mappings = ControllerMappingsToString();
+  bool result =
+      SDL_SaveFile(filename, cstr_str(&mappings), cstr_size(&mappings));
 
-    if (*mapping) {
-      cstr_append(&builder, mapping);
-      cstr_append(&builder, "\n");
-    }
-  }
-
-  SystemModel_CopyToClipboard(cstr_str(&builder));
-  cstr_drop(&builder);
+  cstr_drop(&mappings);
+  return result;
 }
 
 const char* Controller_GetName(ControllerId id)
@@ -1175,4 +1182,21 @@ static GamepadMapping GamepadMapping_Init(csview value, int name_index)
 static void GamepadMapping_drop(GamepadMapping* mapping)
 {
   cstr_drop(&mapping->value);
+}
+
+static cstr ControllerMappingsToString(void)
+{
+  cstr builder = cstr_init();
+
+  c_foreach(it, controller_map, g_controller_list_model.controllers)
+  {
+    const char* mapping = Controller_GetMappingString(it.ref->first);
+
+    if (*mapping) {
+      cstr_append(&builder, mapping);
+      cstr_append(&builder, NEWLINE);
+    }
+  }
+
+  return builder;
 }

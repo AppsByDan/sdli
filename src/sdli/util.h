@@ -29,6 +29,12 @@
 #define UNUSED_1(arg, ...) (void)arg, UNUSED_2(__VA_ARGS__, 0)
 #define UNUSED(...) (UNUSED_1(__VA_ARGS__, 0))
 
+#ifdef _WIN32
+#define NEWLINE "\r\n"
+#else
+#define NEWLINE "\n"
+#endif
+
 #define SDLI_MIN(a, b) ((a) < (b) ? (a) : (b))
 #define SDLI_MAX(a, b) ((a) > (b) ? (a) : (b))
 
@@ -36,6 +42,23 @@
 #define zv_init(STR) {STR, (isize)(sizeof("" STR) - 1)}
 /* Get the length of an undecayed array.*/
 #define u_arraylen(A) (sizeof(A) / sizeof((A)[0]))
+
+#define OnClick(NAME) NAME##_OnClick
+#define OnMouseOver(NAME) NAME##_OnMouseOver
+
+#define OnClickInline(NAME, BLOCK)                                   \
+  static inline void OnClick(NAME)(VNode * node, VNodeEvent * event) \
+  {                                                                  \
+    UNUSED(node, event);                                             \
+    BLOCK                                                            \
+  }
+
+#define OnMouseOverInline(NAME, BLOCK)                                   \
+  static inline void OnMouseOver(NAME)(VNode * node, VNodeEvent * event) \
+  {                                                                      \
+    UNUSED(node, event);                                                 \
+    BLOCK                                                                \
+  }
 
 //
 // public functions

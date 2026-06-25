@@ -7,11 +7,14 @@
 // macros & constants
 //
 
-/* sdl event dispatched before processing sdl events this frame */
+/* event dispatched before processing sdl events this frame */
 #define EVT_BEFORE_PROCESS_EVENTS -1
-/* sdl event dispatched when all sdl events for this frame have been processed
- */
+/* event dispatched when all sdl events for this frame have been processed */
 #define EVT_AFTER_PROCESS_EVENTS -2
+/* event dispatched when an open file dialog has a result */
+#define EVT_OPEN_FILE_DIALOG_RESULT -3
+/* event dispatched when a save file dialog has a result */
+#define EVT_SAVE_FILE_DIALOG_RESULT -4
 
 //
 // types
@@ -20,6 +23,17 @@
 typedef void (*EventListener)(int event_type,
                               void* event_data,
                               void* user_data);
+
+typedef enum FileDialogResult {
+  FILE_DIALOG_RESULT_SUCCESS,
+  FILE_DIALOG_RESULT_CANCELLED,
+  FILE_DIALOG_RESULT_ERROR,
+} FileDialogResult;
+
+typedef struct FileDialogResultEvent {
+  FileDialogResult result;
+  const char* filename;
+} FileDialogResultEvent;
 
 //
 // public functions
@@ -47,5 +61,8 @@ void App_AddEventListener(int event_type,
                           EventListener listener,
                           void* user_data);
 void App_RemoveEventListener(int event_type, EventListener listener);
+
+void App_ShowOpenFileDialog(void);
+void App_ShowSaveFileDialog(void);
 
 #endif  // SDLI_APP_H

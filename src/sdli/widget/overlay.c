@@ -27,25 +27,41 @@ VNode* OverlayLayer(void)
   return overlay_layer;
 }
 
-void Overlay_Show(VNode* overlay, bool modal)
+void Overlay_Show(const char* title,
+                  const char* body,
+                  const OverlayButton* buttons,
+                  size_t button_count)
 {
-  UNUSED(modal);  // TODO: implement modal behavior
-
   VNode* overlay_layer = v_get_node_by_id(NID_OVERLAY_LAYER);
 
-  if (!overlay_layer) {
-    SLog("Overlay_Show: overlay layer node not found");
-    return;
-  }
-
+  v_node_remove_children(overlay_layer);
   v_node_set_visible(overlay_layer, true);
-  v_node_append_child(overlay_layer, overlay);
+
+  NN_BUILD_APPEND(overlay_layer)
+  {
+    NN_BOX({.sclass = CLS_OVERLAY})
+    {
+      NN_TEXT({.text = title, .sclass = CLS_OVERLAY_TITLE});
+      NN_TEXT({.text = body, .sclass = CLS_OVERLAY_BODY_TEXT});
+      for (size_t i = 0; i < button_count; i++) {
+        NN_CALL(ButtonStretch, buttons[i].label, buttons[i].data,
+                buttons[i].on_click);
+      }
+    }
+  }
 }
 
 void Overlay_Dismiss(void)
 {
   VNode* overlay_layer = v_get_node_by_id(NID_OVERLAY_LAYER);
+  assert(overlay_layer);
 
   v_node_remove_children(overlay_layer);
   v_node_set_visible(overlay_layer, false);
+}
+
+void Overlay_Cancel(VNode* node, VNodeEvent* event)
+{
+  UNUSED(node, event);
+  Overlay_Dismiss();
 }

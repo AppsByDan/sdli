@@ -142,8 +142,6 @@ static void JoystickAxis(NN_CALLABLE, int axis_id);
 static void OnJoystickControllerInputEvent(const ControllerInputEvent* event);
 static void OnGamepadControllerInputEvent(const ControllerInputEvent* event);
 static void OnNavigatorEvent(NavigatorEvent* event);
-static void BackButtonOnClick(VNode* node, VNodeEvent* event);
-static void ToggleApiButtonOnClick(VNode* node, VNodeEvent* event);
 static void SetControllerApi(VNode* toggle, ControllerApi new_api);
 static void UpdateGamepadAxisValue(int sgk_axis, float value);
 static void UpdateGamepadButtonValue(int sgk_button, bool pressed);
@@ -152,6 +150,33 @@ static void UpdateJoystickButtonValue(int button_id, bool pressed);
 static void UpdateJoystickHatValue(int hat_id, uint8_t hat_value);
 static VNode* DirectionPadBlock_GetText(VNode* block);
 static void StyleSheet(void);
+
+//
+// private node event handlers
+//
+
+// clang-format off
+OnClickInline(Back, {
+  // TODO: this should be a back navigation, not a hard goto
+  ScreenNavigator_Goto(SCREENID_HOME);
+})
+
+OnClickInline(ToggleApi, {
+  const ControllerApi api = (ControllerApi)(intptr_t)v_node_data(node);
+  ControllerApi new_api;
+
+  if (api == CONTROLLER_API_GAMEPAD) {
+    new_api = CONTROLLER_API_JOYSTICK;
+  } else if (api == CONTROLLER_API_JOYSTICK) {
+    new_api = CONTROLLER_API_GAMEPAD;
+  } else {
+    return;
+  }
+
+  SetControllerApi(node, new_api);
+})
+
+// clang-format on
 
 //
 // public function implementation
@@ -175,8 +200,8 @@ VNode* ControllerEventsScreen(void)
         void* api_button_data = (void*)(intptr_t)CONTROLLER_API_JOYSTICK;
 
         NN_CALL(ButtonWithId, NID_API_TOGGLE, "Joystick API", api_button_data,
-                &ToggleApiButtonOnClick);
-        NN_CALL(Button, "Back", NULL, &BackButtonOnClick);
+                &ToggleApi_OnClick);
+        NN_CALL(Button, "Back", NULL, &Back_OnClick);
       }
       NN_BOX({.id = NID_API_BOX, .sclass = CLS_EV_BODY});
     }
@@ -243,30 +268,6 @@ static void OnNavigatorEvent(NavigatorEvent* event)
 
     SetControllerApi(v_get_node_by_id(NID_API_TOGGLE), CONTROLLER_API_JOYSTICK);
   }
-}
-
-static void BackButtonOnClick(VNode* node, VNodeEvent* event)
-{
-  UNUSED(node, event);
-  // TODO: this should be a back navigation, not a hard goto
-  ScreenNavigator_Goto(SCREENID_HOME);
-}
-
-static void ToggleApiButtonOnClick(VNode* node, VNodeEvent* event)
-{
-  UNUSED(event);
-  const ControllerApi api = (ControllerApi)(intptr_t)v_node_data(node);
-  ControllerApi new_api;
-
-  if (api == CONTROLLER_API_GAMEPAD) {
-    new_api = CONTROLLER_API_JOYSTICK;
-  } else if (api == CONTROLLER_API_JOYSTICK) {
-    new_api = CONTROLLER_API_GAMEPAD;
-  } else {
-    return;
-  }
-
-  SetControllerApi(node, new_api);
 }
 
 static void SetControllerApi(VNode* toggle, ControllerApi new_api)

@@ -60,7 +60,6 @@ void LoadStyleSheet(void)
     vs_set_font(S, FONT_BOLD);
     vs_set_font_size(S, THEME_TEXT_FONT_SIZE_LG);
     vs_set_width(S, V_GROW());
-    vs_set_direction(S, V_DIRECTION_COLUMN);
     vs_set_padding_bottom(S, THEME_SP_MD);
   }
 
@@ -81,6 +80,20 @@ void LoadStyleSheet(void)
   }
 
   vss_extend(S, CLS_BUTTON_HOVER, CLS_BUTTON)
+  {
+    vs_set_background(S, THEME_HIGHLIGHT_1);
+  }
+
+  vss_with(S, CLS_BUTTON_STRETCH)
+  {
+    vs_set_padding(S, THEME_SP_SM, THEME_SP_MD, THEME_SP_SM, THEME_SP_MD);
+    vs_set_border_radius(S, THEME_BUTTON_CORNER_RADIUS);
+    vs_set_background(S, THEME_BUTTON_COLOR);
+    vs_set_width(S, V_GROW());
+    vs_set_xalign(S, V_ALIGN_X_CENTER);
+  }
+
+  vss_extend(S, CLS_BUTTON_STRETCH_HOVER, CLS_BUTTON_STRETCH)
   {
     vs_set_background(S, THEME_HIGHLIGHT_1);
   }
@@ -157,9 +170,31 @@ void LoadStyleSheet(void)
   {
     // TODO: not sure about sizing..
     vs_set_width(S, V_FIXED(400));
-    vs_set_height(S, V_FIXED(200));
+    vs_set_height(S, V_FIT(200));
     vs_set_xalign(S, V_ALIGN_X_CENTER);
-    vs_set_yalign(S, V_ALIGN_Y_CENTER);
+    vs_set_direction(S, V_DIRECTION_COLUMN);
+    vs_set_background(S, THEME_BACKGROUND_2);
+    vs_set_gap(S, THEME_SP_XS);
+    vs_set_padding_all(S, THEME_SP_MD);
+    vs_set_border_radius(S, 14);
+    vs_set_border_all(S, THEME_BORDER);
+    vs_set_border_color(S, THEME_HIGHLIGHT_1);
+  }
+
+  vss_with(S, CLS_OVERLAY_TITLE)
+  {
+    vs_set_color(S, THEME_TEXT_HIGHLIGHT_COLOR);
+    vs_set_font(S, FONT_BOLD);
+    vs_set_font_size(S, THEME_TEXT_FONT_SIZE_LG);
+    vs_set_padding_bottom(S, THEME_SP_MD);
+  }
+
+  vss_extend(S, CLS_OVERLAY_BODY_TEXT, CLS_TEXT)
+  {
+    vs_set_text_wrap(S, V_TEXT_WRAP_WRAP);
+    // TODO: need grow to get wrapping to work.. hmm
+    vs_set_width(S, V_GROW());
+    vs_set_padding_bottom(S, THEME_SP_MD);
   }
 
   vss_extend(S, CLS_OVERLAY_LAYER, CLS_FILL)

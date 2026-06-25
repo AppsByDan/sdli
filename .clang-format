@@ -266,6 +266,8 @@ StatementAttributeLikeMacros:
 StatementMacros:
   - Q_UNUSED
   - QT_REQUIRE_VERSION
+  - OnClickInline
+  - OnMouseOverInline
 TabWidth:        8
 UseTab:          Never
 VerilogBreakBetweenInstancePorts: true
