@@ -26,6 +26,8 @@
 #define ICON_RIGHT "\xee\xa0\x87"
 #define ICON_LEFT "\xee\xa0\x88"
 #define ICON_DOWN "\xee\xa0\x89"
+#define ICON_OK "\xee\xa0\x8a"
+#define ICON_ANGLE_DOWN "\xef\x84\x87"
 
 //
 // types
