@@ -1637,6 +1637,8 @@ typedef enum VNodeFlag {
   V_NODEFLAG_POPOVER_OPEN = 1 << 2,
   V_NODEFLAG_ATTACHED = 1 << 3,
   V_NODEFLAG_LEAF = 1 << 4,
+  /* flag to determine if a popover was invoked during a mouse click */
+  V_NODEFLAG_POPOVER_INVOKED = 1 << 5,
 } VNodeFlag;
 
 struct VNode {
@@ -1681,6 +1683,11 @@ struct VNode {
   struct VWeakRef* self_weak_ref;
 };
 
+typedef enum VNodeEventFlag {
+  V_NODE_EVENT_FLAG_NONE = 0,
+  V_NODE_EVENT_FLAG_CANCELLED = 1 << 0,
+} VNodeEventFlag;
+
 // clang-format off
 VUID_PKG void          v_node_get_abs_pos(const VNode* node, float* x, float* y);
 VUID_PKG void          v_node_set_attached(VNode* node, bool attached);
@@ -1724,6 +1731,20 @@ static inline void v_node_visit(VNode* node,
   v_foreach_child(node, child) {
     v_node_visit(child, visit, user_data);
   }
+}
+
+static inline void v_node_event_set_flag(VNodeEvent* event,
+                                         VNodeEventFlag flag) {
+  event->internal |= flag;
+}
+
+static inline bool v_node_event_has_flag(const VNodeEvent* event,
+                                         VNodeEventFlag flag) {
+  return (event->internal & flag) != 0;
+}
+
+static inline bool v_node_event_was_cancelled(const VNodeEvent* event) {
+  return v_node_event_has_flag(event, V_NODE_EVENT_FLAG_CANCELLED);
 }
 
 // starting from the node itself, traverse up the ancestors until null
@@ -2700,8 +2721,8 @@ VUID_API void v_process_events(void) {
                               &g_context.node_module, event);
         break;
       case V_INPUT_EVENT_KEY:
-        v_node_on_key(g_context.node_module.root, &g_context.node_module,
-                      event);
+        v_node_on_key(g_context.node_module.focused_node,
+                      &g_context.node_module, event);
         break;
       default:
         break;
@@ -3388,8 +3409,7 @@ VUID_PKG void v_command_queue_cmd_stroke_rounded_rect(VCommandQueue* self,
                              false);
 
   /* inner skirt (stitched inward) */
-  ii = v_build_skirt_indices(inds, ii, inner_base, inner_fringe_base, n_perim,
-                             true);
+  v_build_skirt_indices(inds, ii, inner_base, inner_fringe_base, n_perim, true);
 
   v_command_queue_cmd_render(self, 0, vertex_offset, vertex_count, index_offset,
                              index_count);
@@ -7616,6 +7636,9 @@ VUID_PKG void v_event_path_dispatch(VArray* event_path,
     if (curr->event_listeners[type]) {
       curr->event_listeners[type](curr, event);
     }
+    if (v_node_event_was_cancelled(event)) {
+      break;
+    }
   }
 }
 
@@ -7685,16 +7708,6 @@ VUID_PKG void v_node_on_mouse_button(VNode* self,
   // but needs to be more robust.
 
   if (down) {
-    // Light Dismiss for AUTO and HINT popovers
-    for (size_t i = popover_stack->size; i-- > 0;) {
-      VNode* stack_node = v_array_get_ptr_unchecked(popover_stack, i);
-      const VPopover type = stack_node->popover_type;
-      if ((type == V_POPOVER_AUTO || type == V_POPOVER_HINT) &&
-          !v_node_is_descendant_of(target_node, stack_node)) {
-        v_node_hide_popover(stack_node);
-      }
-    }
-
     mod->under_mouse_node = target_node;
 
     // Check for scrollbar hit
@@ -7731,7 +7744,14 @@ VUID_PKG void v_node_on_mouse_button(VNode* self,
       }
     }
   } else {
-    if (target_node == mod->under_mouse_node && target_node != NULL &&
+    for (size_t i = 0; i < popover_stack->size; i++) {
+      VNode* stack_node = v_array_get_ptr_unchecked(popover_stack, i);
+      v_node_clear_flag(stack_node, V_NODEFLAG_POPOVER_INVOKED);
+    }
+
+    v_node_ref(target_node);
+
+    if (target_node != NULL && target_node == mod->under_mouse_node &&
         mod->drag_node == NULL) {
       VArray* event_path = &mod->event_path;
       const size_t start_index = v_event_path_start(event_path);
@@ -7743,20 +7763,34 @@ VUID_PKG void v_node_on_mouse_button(VNode* self,
       const size_t end_index = event_path->size;
 
       if (end_index > start_index) {
-        v_node_ref(target_node);
-        {
-          VNodeEvent event = {
-              .type = V_NODE_EVENT_CLICK,
-              .target = target_node,
-          };
-          v_event_path_dispatch(event_path, &event, start_index, end_index);
-        }
-        v_node_unref(target_node);
+        VNodeEvent event = {
+            .type = V_NODE_EVENT_CLICK,
+            .target = target_node,
+        };
 
+        v_event_path_dispatch(event_path, &event, start_index, end_index);
         v_event_path_reset(event_path, start_index);
       }
     }
 
+    // light dismiss auto and hint popovers. if the popover was invoked during
+    // the click dispatch, it will not be dismissed.
+    for (size_t i = popover_stack->size; i-- > 0;) {
+      VNode* stack_node = v_array_get_ptr_unchecked(popover_stack, i);
+
+      if (v_node_has_flag(stack_node, V_NODEFLAG_POPOVER_INVOKED)) {
+        continue;
+      }
+
+      const VPopover type = stack_node->popover_type;
+
+      if ((type == V_POPOVER_AUTO || type == V_POPOVER_HINT) &&
+          !v_node_is_descendant_of(target_node, stack_node)) {
+        v_node_hide_popover(stack_node);
+      }
+    }
+
+    v_node_unref(target_node);
     mod->under_mouse_node = NULL;
     mod->drag_node = NULL;
   }
@@ -7913,33 +7947,40 @@ VUID_PKG void v_node_on_mouse_wheel(VNode* self,
 VUID_PKG void v_node_on_key(VNode* self,
                             VNodeModule* mod,
                             const VInputEvent* input_event) {
-  UNUSED(mod);
-  // TODO: active/focus is not implemented yet, just send the
-  //       key events to root for now
+  if (self == NULL) {
+    // TODO: assert?
+    return;
+  }
 
-  if (input_event->u.key.down) {
-    if (self->event_listeners[V_NODE_EVENT_KEY_DOWN]) {
-      VKeyNodeEvent key_event = {
-          .type = V_NODE_EVENT_KEY_DOWN,
-          .target = self,
-          .key = input_event->u.key.key,
-          .modifiers = input_event->u.key.modifiers,
-          .repeat_count = input_event->u.key.repeat_count,
-          .down = true,
-      };
-      self->event_listeners[V_NODE_EVENT_KEY_DOWN](self,
-                                                   (VNodeEvent*)&key_event);
+  VArray* event_path = &mod->event_path;
+  const size_t start_index = v_event_path_start(event_path);
+  const VNodeEventType type =
+      input_event->u.key.down ? V_NODE_EVENT_KEY_DOWN : V_NODE_EVENT_KEY_UP;
+
+  v_foreach_ancestor(self, curr) {
+    if (curr->event_listeners[type]) {
+      v_event_path_push_ref(event_path, type, curr);
     }
-  } else if (self->event_listeners[V_NODE_EVENT_KEY_UP]) {
-    VKeyNodeEvent key_event = {
-        .type = V_NODE_EVENT_KEY_UP,
+  }
+
+  const size_t end_index = event_path->size;
+
+  if (end_index > start_index) {
+    VNodeEvent key_event = {
+        .type = type,
         .target = self,
-        .key = input_event->u.key.key,
-        .modifiers = input_event->u.key.modifiers,
-        .repeat_count = input_event->u.key.repeat_count,
-        .down = false,
+        .u.key_info =
+            {
+                .key = input_event->u.key.key,
+                .modifiers = input_event->u.key.modifiers,
+                .repeat_count = input_event->u.key.repeat_count,
+                .down = input_event->u.key.down,
+            },
     };
-    self->event_listeners[V_NODE_EVENT_KEY_UP](self, (VNodeEvent*)&key_event);
+
+    v_event_path_dispatch(event_path, &key_event, start_index, end_index);
+
+    v_event_path_reset(event_path, start_index);
   }
 }
 
@@ -8980,6 +9021,7 @@ VUID_API bool v_node_show_popover(VNode* node) {
     return false;
 
   v_node_set_flag(node, V_NODEFLAG_POPOVER_OPEN);
+  v_node_set_flag(node, V_NODEFLAG_POPOVER_INVOKED);
   v_node_set_visible(node, true);
   v_node_mark_dirty(node);
   return true;
@@ -8992,8 +9034,21 @@ VUID_API void v_node_hide_popover(VNode* node) {
 
   v_node_module_remove_popover_node(node);
   v_node_clear_flag(node, V_NODEFLAG_POPOVER_OPEN);
+  v_node_clear_flag(node, V_NODEFLAG_POPOVER_INVOKED);
   v_node_set_visible(node, false);
   v_node_mark_dirty(node);
+}
+
+VUID_API void v_node_toggle_popover(VNode* node) {
+  if (!node) {
+    return;
+  }
+
+  if (v_node_has_flag(node, V_NODEFLAG_POPOVER_OPEN)) {
+    v_node_hide_popover(node);
+  } else {
+    v_node_show_popover(node);
+  }
 }
 
 VUID_API void v_node_ref(VNode* node) {
@@ -9022,6 +9077,12 @@ VUID_API void v_node_unref(VNode* node) {
 
 VUID_API uint32_t v_node_ref_count(const VNode* node) {
   return node ? node->ref_count : 0;
+}
+
+VUID_API void v_node_event_stop_propagation(VNodeEvent* event) {
+  if (event) {
+    v_node_event_set_flag(event, V_NODE_EVENT_FLAG_CANCELLED);
+  }
 }
 
 VUID_PKG const VStyle* v_node_get_style_or_empty(const VNode* node) {

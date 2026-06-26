@@ -294,9 +294,27 @@ typedef struct VInputEvent {
 typedef enum VNodeEventType {
   // TODO: partially implemented (sends on up, no mouse info in event)
   V_NODE_EVENT_CLICK,
-  // TODO: partially implemented (dispatches to root only)
+  /*
+   * Fired when a key is pressed. The event is delivered to the
+   * focused node.
+   *
+   * - target:         The focused node that initially received
+   *                   the key down event.
+   * - related_target: null
+   * - bubbles:        Yes
+   * - cancelable:     Yes
+   */
   V_NODE_EVENT_KEY_DOWN,
-  // TODO: partially implemented (dispatches to root only)
+  /*
+   * Fired when a key is released. The event is delivered to the
+   * focused node.
+   *
+   * - target:         The focused node that initially received
+   *                   the key up event.
+   * - related_target: null
+   * - bubbles:        Yes
+   * - cancelable:     Yes
+   */
   V_NODE_EVENT_KEY_UP,
   /*
    * Fired when the mouse cursor enters the node's visual area.
@@ -304,6 +322,7 @@ typedef enum VNodeEventType {
    * - target:         The node that the cursor entered.
    * - related_target: The node that the cursor left.
    * - bubbles:        Yes
+   * - cancelable:     Yes
    */
   V_NODE_EVENT_MOUSE_ENTER,
   /*
@@ -312,6 +331,7 @@ typedef enum VNodeEventType {
    * - target:         The node that the cursor left.
    * - related_target: The node that the cursor entered.
    * - bubbles:        Yes
+   * - cancelable:     Yes
    */
   V_NODE_EVENT_MOUSE_LEAVE,
   /*
@@ -320,6 +340,7 @@ typedef enum VNodeEventType {
    * - target:         The node that lost focus.
    * - related_target: The node that gained focus as a result of this node losing focus.
    * - bubbles:        Yes
+   * - cancelable:     Yes
    */
   V_NODE_EVENT_BLUR,
   /*
@@ -328,6 +349,7 @@ typedef enum VNodeEventType {
    * - target:         The node that gained focus.
    * - related_target: The node that lost focus as a result of this node gaining focus.
    * - bubbles:        Yes
+   * - cancelable:     Yes
    */
   V_NODE_EVENT_FOCUS,
   V_NODE_EVENT__COUNT,
@@ -337,19 +359,16 @@ typedef struct VNodeEvent {
   VNodeEventType    type;
   VNode*            target;
   VNode*            related_target;
-} VNodeEvent;
-
-// TODO: move to node event
-typedef struct VKeyNodeEvent {
-  VNodeEventType    type;
+  union {
+    struct {
+      VKey              key;
+      uint32_t          modifiers;
+      int               repeat_count;
+      bool              down;
+    } key_info;
+  } u;
   uint32_t          internal;
-  VNode*            target;
-  VNode*            related_target;
-  VKey              key;
-  uint32_t          modifiers;
-  int               repeat_count;
-  bool              down;
-} VKeyNodeEvent;
+} VNodeEvent;
 
 typedef void (*VNodeEventListener)(VNode* node, VNodeEvent* event);
 
@@ -577,6 +596,12 @@ VUID_API VColor       v_get_popover_backdrop_color(void);
 VUID_API VNode*       v_get_focused_node(void);
 
 // ============================================================
+// Event API
+// ============================================================
+
+VUID_API void v_node_event_stop_propagation(VNodeEvent* event);
+
+// ============================================================
 // Node API
 // ============================================================
 
@@ -622,6 +647,7 @@ VUID_API VPopover     v_node_popover(const VNode* node);
 VUID_API void         v_node_set_popover(VNode* node, VPopover type);
 VUID_API bool         v_node_show_popover(VNode* node);
 VUID_API void         v_node_hide_popover(VNode* node);
+VUID_API void         v_node_toggle_popover(VNode* node);
 
 VUID_API bool         v_node_focus(VNode* node);
 VUID_API bool         v_node_blur(VNode* node);
