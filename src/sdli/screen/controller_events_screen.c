@@ -79,6 +79,9 @@ typedef struct HatDisplayInfo {
 #define JOYSTICK_HAT_DISPLAY_FMT "h%i"
 #define JOYSTICK_AXIS_DISPLAY_FMT "a%i"
 
+#define JOYSTICK_API_DATA ((void*)(intptr_t)CONTROLLER_API_JOYSTICK)
+#define GAMEPAD_API_DATA ((void*)(intptr_t)CONTROLLER_API_GAMEPAD)
+
 static const HatDisplayInfo HAT_DISPLAY_INFO[] = {
     {ICON_UP, POV_HAT_MASK_UP},
     {ICON_DOWN, POV_HAT_MASK_DOWN},
@@ -161,19 +164,8 @@ OnClickInline(Back, {
   ScreenNavigator_Goto(SCREENID_HOME);
 })
 
-OnClickInline(ToggleApi, {
-  const ControllerApi api = (ControllerApi)(intptr_t)v_node_data(node);
-  ControllerApi new_api;
-
-  if (api == CONTROLLER_API_GAMEPAD) {
-    new_api = CONTROLLER_API_JOYSTICK;
-  } else if (api == CONTROLLER_API_JOYSTICK) {
-    new_api = CONTROLLER_API_GAMEPAD;
-  } else {
-    return;
-  }
-
-  SetControllerApi(node, new_api);
+OnClickInline(SetApi, {
+  SetControllerApi(node, (ControllerApi)(intptr_t)v_node_data(node));
 })
 
 // clang-format on
@@ -197,10 +189,12 @@ VNode* ControllerEventsScreen(void)
             .sclass = CLS_EV_CONTROLLER_NAME,
         });
 
-        void* api_button_data = (void*)(intptr_t)CONTROLLER_API_JOYSTICK;
+        static const SelectItem apis[] = {
+            {.label = "Joystick API", .data = JOYSTICK_API_DATA},
+            {.label = "Gamepad API", .data = GAMEPAD_API_DATA},
+        };
 
-        NN_CALL(ButtonWithId, NID_API_TOGGLE, "Joystick API", api_button_data,
-                &ToggleApi_OnClick);
+        NN_CALL(Select, apis, u_arraylen(apis), JOYSTICK_API_DATA, &SetApi_OnClick);
         NN_CALL(Button, "Back", NULL, &Back_OnClick);
       }
       NN_BOX({.id = NID_API_BOX, .sclass = CLS_EV_BODY});

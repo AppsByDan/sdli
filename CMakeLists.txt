@@ -112,6 +112,7 @@ add_library(${SDLI_LIB} STATIC
   "src/sdli/widget/list_item.c"
   "src/sdli/widget/navigator.c"
   "src/sdli/widget/overlay.c"
+  "src/sdli/widget/select.c"
   "src/sdli/widget/state.c"
   "src3/vuid/vuid.c"
   "src3/vuid/vuid_sdl3.c"

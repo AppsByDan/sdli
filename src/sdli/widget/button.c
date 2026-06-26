@@ -44,16 +44,6 @@ void Button(NN_CALLABLE,
              &Button_OnMouseOver);
 }
 
-void ButtonWithId(NN_CALLABLE,
-                  const char* id,
-                  const char* label,
-                  void* data,
-                  VNodeEventListener on_click)
-{
-  ButtonImpl(NN_STATE(), id, label, data, CLS_BUTTON, on_click,
-             &Button_OnMouseOver);
-}
-
 void ButtonStretch(NN_CALLABLE,
                    const char* label,
                    void* data,
@@ -65,7 +55,7 @@ void ButtonStretch(NN_CALLABLE,
 
 void Button_SetLabel(VNode* node, const char* text)
 {
-  v_node_set_text(v_node_child_at(node, 0), text);
+  v_node_set_text(v_node_first_child(node), text);
 }
 
 //
@@ -98,11 +88,13 @@ static void OnMouseMoveImpl(VNode* node,
                             const char* button_class,
                             const char* button_hover_class)
 {
+  VNode* label_node = v_node_first_child(node);
+
   if (event->type == V_NODE_EVENT_MOUSE_ENTER) {
     v_node_style_assign_class(node, button_hover_class);
-    v_node_style_assign_class(v_node_child_at(node, 0), CLS_BUTTON_TEXT_HOVER);
+    v_node_style_assign_class(label_node, CLS_BUTTON_TEXT_HOVER);
   } else if (event->type == V_NODE_EVENT_MOUSE_LEAVE) {
     v_node_style_assign_class(node, button_class);
-    v_node_style_assign_class(v_node_child_at(node, 0), CLS_BUTTON_TEXT);
+    v_node_style_assign_class(label_node, CLS_BUTTON_TEXT);
   }
 }

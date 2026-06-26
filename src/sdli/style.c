@@ -77,6 +77,7 @@ void LoadStyleSheet(void)
     vs_set_padding(S, THEME_SP_SM, THEME_SP_MD, THEME_SP_SM, THEME_SP_MD);
     vs_set_border_radius(S, THEME_BUTTON_CORNER_RADIUS);
     vs_set_background(S, THEME_BUTTON_COLOR);
+    vs_set_gap(S, THEME_SP_SM);
   }
 
   vss_extend(S, CLS_BUTTON_HOVER, CLS_BUTTON)
@@ -84,16 +85,20 @@ void LoadStyleSheet(void)
     vs_set_background(S, THEME_HIGHLIGHT_1);
   }
 
-  vss_with(S, CLS_BUTTON_STRETCH)
+  vss_extend(S, CLS_BUTTON_STRETCH, CLS_BUTTON)
   {
-    vs_set_padding(S, THEME_SP_SM, THEME_SP_MD, THEME_SP_SM, THEME_SP_MD);
-    vs_set_border_radius(S, THEME_BUTTON_CORNER_RADIUS);
-    vs_set_background(S, THEME_BUTTON_COLOR);
     vs_set_width(S, V_GROW());
     vs_set_xalign(S, V_ALIGN_X_CENTER);
   }
 
-  vss_extend(S, CLS_BUTTON_STRETCH_HOVER, CLS_BUTTON_STRETCH)
+  vss_extend(S, CLS_BUTTON_STRETCH_HOVER, CLS_BUTTON_HOVER) {}
+
+  vss_extend(S, CLS_MENU_BUTTON, CLS_BUTTON)
+  {
+    vs_set_width(S, V_GROW());
+  }
+
+  vss_extend(S, CLS_MENU_BUTTON_HOVER, CLS_MENU_BUTTON)
   {
     vs_set_background(S, THEME_HIGHLIGHT_1);
   }
@@ -103,6 +108,26 @@ void LoadStyleSheet(void)
   vss_extend(S, CLS_BUTTON_TEXT_HOVER, CLS_BUTTON_TEXT)
   {
     vs_set_color(S, THEME_TEXT_HIGHLIGHT_COLOR);
+  }
+
+  vss_extend(S, CLS_BUTTON_ICON, CLS_ICON) {}
+
+  vss_extend(S, CLS_BUTTON_ICON_HOVER, CLS_BUTTON_ICON)
+  {
+    vs_set_color(S, THEME_TEXT_HIGHLIGHT_COLOR);
+  }
+
+  vss_with(S, CLS_MENU)
+  {
+    vs_set_border_radius(S, THEME_BUTTON_CORNER_RADIUS);
+    vs_set_background(S, THEME_BUTTON_COLOR);
+    vs_set_direction(S, V_DIRECTION_COLUMN);
+    vs_set_attach_point_offset_y(S, THEME_SP_SM);
+    vs_set_anchor_to(S, V_ANCHOR_TO_PARENT);
+    vs_set_anchor_attach_point_x(S, V_ATTACH_POINT_X_RIGHT);
+    vs_set_anchor_attach_point_y(S, V_ATTACH_POINT_Y_BOTTOM);
+    vs_set_attach_point_x(S, V_ATTACH_POINT_X_RIGHT);
+    vs_set_attach_point_y(S, V_ATTACH_POINT_Y_TOP);
   }
 
   vss_with(S, CLS_LIST)

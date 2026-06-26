@@ -41,6 +41,11 @@ typedef struct OverlayButton {
   VNodeEventListener on_click;
 } OverlayButton;
 
+typedef struct SelectItem {
+  const char* label;
+  void* data;
+} SelectItem;
+
 typedef VNode* (*CreateNavigableFn)(const char* id);
 typedef void (*OnNavigatorEventFn)(NavigatorEvent* event);
 
@@ -94,16 +99,22 @@ void Button(NN_CALLABLE,
             const char* label,
             void* data,
             VNodeEventListener on_click);
-void ButtonWithId(NN_CALLABLE,
-                  const char* id,
-                  const char* label,
-                  void* data,
-                  VNodeEventListener on_click);
 void ButtonStretch(NN_CALLABLE,
                    const char* label,
                    void* data,
                    VNodeEventListener on_click);
 void Button_SetLabel(VNode* node, const char* text);
+
+/*
+ * Select is a button with a menu dropdown. The user can select an item from the
+ * list, changing the button label to the selected item.
+ */
+
+void Select(NN_CALLABLE,
+            const SelectItem* items,
+            size_t item_count,
+            void* selected_data,
+            VNodeEventListener on_click);
 
 /*
  * Overlay is a modal or non-modal dialog box. The app has an overlay layer
