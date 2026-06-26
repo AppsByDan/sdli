@@ -91,7 +91,10 @@ void LoadStyleSheet(void)
     vs_set_xalign(S, V_ALIGN_X_CENTER);
   }
 
-  vss_extend(S, CLS_BUTTON_STRETCH_HOVER, CLS_BUTTON_HOVER) {}
+  vss_extend(S, CLS_BUTTON_STRETCH_HOVER, CLS_BUTTON_STRETCH)
+  {
+    vs_set_background(S, THEME_HIGHLIGHT_1);
+  }
 
   vss_extend(S, CLS_MENU_BUTTON, CLS_BUTTON)
   {
