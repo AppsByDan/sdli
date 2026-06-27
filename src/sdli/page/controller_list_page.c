@@ -147,7 +147,7 @@ static void ControllerListItem(NN_CALLABLE, ControllerId id)
       VNode* text = NN_SELF();
       VStyle* text_style = v_node_style(text);
 
-      vs_set_width(text_style, V_GROW());
+      vs_set_width(text_style, v_grow());
       v_node_set_text_fmt(text, "%i :: %s :: %s", (int)id,
                           Controller_GetName(id), Controller_GetGUID(id));
     }

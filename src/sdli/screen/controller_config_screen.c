@@ -412,7 +412,7 @@ static void StyleSheet(void)
   vss_with(S, CLS_CONFIG_GROUP)
   {
     vs_set_direction(S, V_DIRECTION_COLUMN);
-    vs_set_border(S, 0, THEME_BORDER, THEME_BORDER, THEME_BORDER);
+    vs_set_border(S, v_px(0), THEME_BORDER, THEME_BORDER, THEME_BORDER);
     vs_set_border_color(S, THEME_BACKGROUND_1);
   }
 
@@ -421,7 +421,7 @@ static void StyleSheet(void)
     vs_set_font(S, FONT_BOLD);
     vs_set_font_size(S, THEME_TEXT_FONT_SIZE_LG);
     vs_set_background(S, THEME_BACKGROUND_1);
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
     vs_set_padding_all(S, THEME_SP_2XS);
   }
 
@@ -450,12 +450,12 @@ static void StyleSheet(void)
   {
     vs_set_direction(S, V_DIRECTION_ROW);
     vs_set_gap(S, THEME_SP_SM);
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
   }
 
   vss_extend(S, CLS_SCREEN_MENU_NAME, CLS_TEXT)
   {
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
   }
 
   vss_extend(S, CLS_SCREEN, CLS_FILL)

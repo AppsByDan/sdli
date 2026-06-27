@@ -147,20 +147,20 @@ static void StyleSheet(void)
   {
     vs_set_direction(S, V_DIRECTION_COLUMN);
     vs_set_background(S, THEME_BACKGROUND_1);
-    vs_set_width(S, V_FIT());
-    vs_set_height(S, V_GROW());
+    vs_set_width(S, v_fit());
+    vs_set_height(S, v_grow());
   }
 
   vss_extend(S, CLS_HOME_RIGHT_COLUMN, CLS_FILL)
   {
     vs_set_direction(S, V_DIRECTION_COLUMN);
-    vs_set_padding(S, THEME_SP_SM, THEME_SP_SM, THEME_SP_SM, 0);
+    vs_set_padding(S, THEME_SP_SM, THEME_SP_SM, THEME_SP_SM, v_px(0));
   }
 
   vss_with(S, CLS_HOME_BUTTON)
   {
     // TODO: the sizing is not working!
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
     vs_set_padding(S, THEME_SP_SM, THEME_SP_LG, THEME_SP_SM, THEME_SP_LG);
     vs_set_gap(S, THEME_SP_SM);
     vs_set_background(S, THEME_BACKGROUND_1);
@@ -189,7 +189,7 @@ static void StyleSheet(void)
 
   vss_with(S, CLS_HOME_BUTTON_ICON_BOX)
   {
-    vs_set_width(S, V_FIXED(max_width));
+    vs_set_width(S, v_px(max_width));
     vs_set_xalign(S, V_ALIGN_X_CENTER);
   }
 

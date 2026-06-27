@@ -11,11 +11,11 @@
 #define FONT_BOLD "Font-Bold"
 #define FONT_ICON "Font-Icon"
 
-#define THEME_TEXT_FONT_SIZE (16)
-#define THEME_TEXT_FONT_SIZE_MD (18)
-#define THEME_TEXT_FONT_SIZE_LG (20)
+#define THEME_TEXT_FONT_SIZE v_px(16)
+#define THEME_TEXT_FONT_SIZE_MD v_px(18)
+#define THEME_TEXT_FONT_SIZE_LG v_px(20)
 
-#define THEME_ICON_FONT_SIZE (16)
+#define THEME_ICON_FONT_SIZE v_px(16)
 
 #define THEME_BACKGROUND_1 ((VColor){0x2A, 0x2D, 0x34, 0xFF})
 #define THEME_BACKGROUND_2 ((VColor){0x17, 0x1D, 0x25, 0xFF})
@@ -28,18 +28,18 @@
 #define THEME_UNMAPPED_COLOR ((VColor){0x59, 0x5E, 0x66, 0xFF})
 #define THEME_LIST_BORDER_COLOR ((VColor){0x44, 0x44, 0x44, 0xFF})
 
-#define THEME_SP_2XS (5)
-#define THEME_SP_XS (8)
-#define THEME_SP_SM (10)
-#define THEME_SP_MD (20)
-#define THEME_SP_LG (30)
+#define THEME_SP_2XS v_px(5)
+#define THEME_SP_XS v_px(8)
+#define THEME_SP_SM v_px(10)
+#define THEME_SP_MD v_px(20)
+#define THEME_SP_LG v_px(30)
 
-#define THEME_BORDER (1)
-#define THEME_EVENT_BUTTON_BORDER (2)
-#define THEME_BUTTON_CORNER_RADIUS (4)
-#define THEME_SCROLLBAR_WIDTH (14)
-#define THEME_GAMEPAD_BUTTON_HEIGHT (42)
-#define THEME_JOYSTICK_BUTTON_SIZE (48)
+#define THEME_BORDER v_px(1)
+#define THEME_EVENT_BUTTON_BORDER v_px(2)
+#define THEME_BUTTON_CORNER_RADIUS v_px(4)
+#define THEME_SCROLLBAR_WIDTH v_px(14)
+#define THEME_GAMEPAD_BUTTON_HEIGHT v_px(42)
+#define THEME_JOYSTICK_BUTTON_SIZE v_px(48)
 
 #define CLS_FILL "fill"
 #define CLS_TEXT "text"

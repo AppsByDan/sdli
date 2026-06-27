@@ -194,7 +194,8 @@ VNode* ControllerEventsScreen(void)
             {.label = "Gamepad API", .data = GAMEPAD_API_DATA},
         };
 
-        NN_CALL(Select, apis, u_arraylen(apis), JOYSTICK_API_DATA, &SetApi_OnClick);
+        NN_CALL(Select, apis, u_arraylen(apis), JOYSTICK_API_DATA,
+                &SetApi_OnClick);
         NN_CALL(Button, "Back", NULL, &Back_OnClick);
       }
       NN_BOX({.id = NID_API_BOX, .sclass = CLS_EV_BODY});
@@ -657,38 +658,38 @@ static void StyleSheet(void)
   {
     vs_set_direction(S, V_DIRECTION_ROW);
     vs_set_gap(S, THEME_SP_SM);
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
   }
 
   vss_with(S, CLS_EV_BODY)
   {
     vs_set_xalign(S, V_ALIGN_X_CENTER);
     vs_set_yalign(S, V_ALIGN_Y_CENTER);
-    vs_set_width(S, V_GROW());
-    vs_set_height(S, V_GROW());
+    vs_set_width(S, v_grow());
+    vs_set_height(S, v_grow());
     vs_set_gap(S, THEME_SP_LG);
     vs_set_padding_top(S, THEME_SP_MD);
   }
 
   vss_extend(S, CLS_EV_CONTROLLER_NAME, CLS_TEXT)
   {
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
   }
 
   vss_with(S, CLS_EVJ_BOX)
   {
     vs_set_direction(S, V_DIRECTION_COLUMN);
     vs_set_gap(S, THEME_SP_MD);
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
   }
 
   vss_with(S, CLS_EVJ_BUTTON)
   {
     vs_set_border_color(S, THEME_TEXT_COLOR);
-    vs_set_border_radius(S, 1000);
+    vs_set_border_radius(S, v_px(1000));
     vs_set_border_all(S, THEME_EVENT_BUTTON_BORDER);
-    vs_set_width(S, V_FIXED(THEME_JOYSTICK_BUTTON_SIZE));
-    vs_set_height(S, V_FIXED(THEME_JOYSTICK_BUTTON_SIZE));
+    vs_set_width(S, THEME_JOYSTICK_BUTTON_SIZE);
+    vs_set_height(S, THEME_JOYSTICK_BUTTON_SIZE);
     vs_set_xalign(S, V_ALIGN_X_CENTER);
     vs_set_yalign(S, V_ALIGN_Y_CENTER);
   }
@@ -726,7 +727,7 @@ static void StyleSheet(void)
 
   vss_with(S, CLS_EVJ_GROUP)
   {
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
     vs_set_xalign(S, V_ALIGN_X_CENTER);
     vs_set_direction(S, V_DIRECTION_ROW);
     vs_set_gap(S, THEME_SP_2XS);
@@ -735,36 +736,36 @@ static void StyleSheet(void)
   vss_with(S, CLS_EVJ_AXIS)
   {
     vs_set_border_color(S, THEME_TEXT_COLOR);
-    vs_set_border_radius(S, 1000);
+    vs_set_border_radius(S, v_px(1000));
     vs_set_border_all(S, THEME_EVENT_BUTTON_BORDER);
     vs_set_yalign(S, V_ALIGN_Y_CENTER);
-    vs_set_height(S, V_FIXED(THEME_JOYSTICK_BUTTON_SIZE));
+    vs_set_height(S, THEME_JOYSTICK_BUTTON_SIZE);
     vs_set_gap(S, THEME_SP_XS);
-    vs_set_padding(S, 0, THEME_SP_MD, 0, THEME_SP_MD);
+    vs_set_padding(S, v_px(0), THEME_SP_MD, v_px(0), THEME_SP_MD);
   }
 
   vss_extend(S, CLS_EVJ_AXIS_KEY, CLS_TEXT)
   {
-    vs_set_width(
-        S, V_FIXED(v_style_measure_text_w(text_style_class, "a88") + 1.f));
+    vs_set_width(S,
+                 v_px(v_style_measure_text_w(text_style_class, "a88") + 1.f));
   }
 
   vss_extend(S, CLS_EVJ_AXIS_VALUE, CLS_TEXT)
   {
     vs_set_talign(S, V_ALIGN_X_RIGHT);
-    vs_set_width(S,
-                 V_FIXED(v_style_measure_text_w(text_style_class, "-8.888")));
+    vs_set_width(S, v_px(v_style_measure_text_w(text_style_class, "-8.888")));
   }
 
   vss_with(S, CLS_EVG_BUTTON)
   {
-    const uint16_t half_height = THEME_GAMEPAD_BUTTON_HEIGHT / 2;
+    const VStyleValue button_height = THEME_GAMEPAD_BUTTON_HEIGHT;
+    const uint16_t half_height = button_height.value.px / 2;
 
     vs_set_border_color(S, THEME_TEXT_COLOR);
-    vs_set_border_radius(S, 1000);
+    vs_set_border_radius(S, v_px(1000));
     vs_set_border_all(S, THEME_EVENT_BUTTON_BORDER);
-    vs_set_width(S, V_FIXED(max_width + (float)(half_height * 2)));
-    vs_set_height(S, V_FIXED(THEME_GAMEPAD_BUTTON_HEIGHT));
+    vs_set_width(S, v_px(max_width + (float)(half_height * 2)));
+    vs_set_height(S, button_height);
     vs_set_xalign(S, V_ALIGN_X_CENTER);
     vs_set_yalign(S, V_ALIGN_Y_CENTER);
   }
@@ -788,38 +789,38 @@ static void StyleSheet(void)
   {
     vs_set_padding_top(S, THEME_SP_MD);
     vs_set_direction(S, V_DIRECTION_ROW);
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
   }
 
   vss_with(S, CLS_EVG_AXIS_BOX)
   {
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
     vs_set_direction(S, V_DIRECTION_COLUMN);
   }
 
   vss_with(S, CLS_EVG_AXIS_SPACER)
   {
-    vs_set_width(S, V_FIXED(100));
-    vs_set_height(S, V_FIXED(1));
+    vs_set_width(S, v_px(100));
+    vs_set_height(S, v_px(1));
   }
 
   vss_with(S, CLS_EVG_AXIS_KV_ITEM)
   {
     vs_set_padding_top(S, THEME_SP_SM);
     vs_set_direction(S, V_DIRECTION_ROW);
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
   }
 
   vss_extend(S, CLS_EVG_AXIS_KV_ITEM_FIRST, CLS_EVG_AXIS_KV_ITEM)
   {
-    vs_set_padding(S, 0, 0, THEME_SP_SM, 0);
+    vs_set_padding_bottom(S, THEME_SP_SM);
     vs_set_border_bottom(S, THEME_BORDER);
     vs_set_border_color(S, THEME_TEXT_COLOR);
   }
 
   vss_extend(S, CLS_EVG_AXIS_KEY, CLS_TEXT)
   {
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
   }
 
   vss_extend(S, CLS_EVG_AXIS_VALUE, CLS_TEXT) {}
@@ -827,11 +828,11 @@ static void StyleSheet(void)
   vss_with(S, CLS_DPAD)
   {
     vs_set_border_color(S, THEME_TEXT_COLOR);
-    vs_set_border_radius(S, 1000);
+    vs_set_border_radius(S, v_px(1000));
     vs_set_border_all(S, THEME_EVENT_BUTTON_BORDER);
 
     vs_set_direction(S, V_DIRECTION_COLUMN);
-    vs_set_width(S, V_FIT());
+    vs_set_width(S, v_fit());
     vs_set_padding_all(S, THEME_SP_2XS);
   }
 
@@ -842,13 +843,13 @@ static void StyleSheet(void)
 
   vss_with(S, CLS_DPAD_ROW)
   {
-    vs_set_width(S, V_GROW());
+    vs_set_width(S, v_grow());
     vs_set_xalign(S, V_ALIGN_X_CENTER);
   }
 
   vss_extend(S, CLS_DPAD_ICON, CLS_ICON)
   {
-    vs_set_font_size(S, 24);
+    vs_set_font_size(S, v_px(24));
   }
 
   vss_extend(S, CLS_DPAD_ICON_DOWN, CLS_DPAD_ICON)
@@ -863,8 +864,8 @@ static void StyleSheet(void)
         SDLI_MAX(v_style_measure_text_w(dpad_icon_style, ICON_UP),
                  v_style_measure_text_w(dpad_icon_style, ICON_RIGHT));
 
-    vs_set_width(S, V_FIXED(block_size * 1.5f));
-    vs_set_height(S, V_FIXED(block_size * 1.5f));
+    vs_set_width(S, v_px(block_size * 1.5f));
+    vs_set_height(S, v_px(block_size * 1.5f));
     vs_set_xalign(S, V_ALIGN_X_CENTER);
     vs_set_yalign(S, V_ALIGN_Y_CENTER);
   }

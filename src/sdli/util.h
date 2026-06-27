@@ -93,14 +93,24 @@ static inline bool NodeIdEq(VNode* node, const char* id)
   return strcmp(v_node_id(node), id) == 0;
 }
 
-static inline void vs_set_border_all(VStyle* style, uint16_t value)
+static inline void vs_set_border_all(VStyle* style, VStyleValue value)
 {
   vs_set_border(style, value, value, value, value);
 }
 
-static inline void vs_set_padding_all(VStyle* style, uint16_t value)
+static inline void vs_set_padding_all(VStyle* style, VStyleValue value)
 {
   vs_set_padding(style, value, value, value, value);
+}
+
+static inline VStyleValue v_style_value_add_px(VStyleValue a, VStyleValue b)
+{
+  if (a.unit == V_STYLE_VALUE_UNIT_PX && b.unit == V_STYLE_VALUE_UNIT_PX) {
+    return (VStyleValue){.unit = V_STYLE_VALUE_UNIT_PX,
+                         .value.px = a.value.px + b.value.px};
+  }
+
+  return v_px(0);
 }
 
 #endif  // SDLI_UTIL_H
