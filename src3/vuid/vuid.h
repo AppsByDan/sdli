@@ -86,6 +86,21 @@ typedef struct VColor {
 // Style enums and types
 // ============================================================
 
+typedef enum VStyleValueUnit {
+  V_STYLE_VALUE_UNIT_AUTO,
+  // TODO: should fit and grow be in their own enum?
+  V_STYLE_VALUE_UNIT_FIT,
+  V_STYLE_VALUE_UNIT_GROW,
+  V_STYLE_VALUE_UNIT_PX,
+} VStyleValueUnit;
+
+typedef struct VStyleValue {
+  VStyleValueUnit unit;
+  union {
+    float px;
+  } value;
+} VStyleValue;
+
 typedef enum VPosition {
   V_POSITION_STATIC,
   V_POSITION_RELATIVE,
@@ -101,12 +116,6 @@ typedef enum VWrap {
   V_WRAP_NONE,
   V_WRAP_WRAP,
 } VWrap;
-
-typedef enum VSizingTag {
-  V_SIZING_FIT,
-  V_SIZING_GROW,
-  V_SIZING_FIXED,
-} VSizingTag;
 
 typedef enum VTextWrap {
   V_TEXT_WRAP_WRAP,
@@ -152,12 +161,6 @@ typedef enum VAttachPointY {
   V_ATTACH_POINT_Y_CENTER,
   V_ATTACH_POINT_Y_BOTTOM,
 } VAttachPointY;
-
-typedef struct VSizing {
-  VSizingTag tag;
-  float      min;
-  float      max;
-} VSizing;
 
 // ============================================================
 // Keyboard input
@@ -702,15 +705,35 @@ static inline void v_node_style_apply_class(VNode* node, const char* name) {
 // Style property accessors (vs_*)
 // ============================================================
 
-VUID_API void          vs_set_width(VStyle* style, VSizing value);
-VUID_API VSizing       vs_get_width(const VStyle* style);
+VUID_API void          vs_set_width(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_width(const VStyle* style);
 VUID_API void          vs_unset_width(VStyle* style);
 VUID_API bool          vs_has_width(const VStyle* style);
 
-VUID_API void          vs_set_height(VStyle* style, VSizing value);
-VUID_API VSizing       vs_get_height(const VStyle* style);
+VUID_API void          vs_set_min_width(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_min_width(const VStyle* style);
+VUID_API void          vs_unset_min_width(VStyle* style);
+VUID_API bool          vs_has_min_width(const VStyle* style);
+
+VUID_API void          vs_set_max_width(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_max_width(const VStyle* style);
+VUID_API void          vs_unset_max_width(VStyle* style);
+VUID_API bool          vs_has_max_width(const VStyle* style);
+
+VUID_API void          vs_set_height(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_height(const VStyle* style);
 VUID_API void          vs_unset_height(VStyle* style);
 VUID_API bool          vs_has_height(const VStyle* style);
+
+VUID_API void          vs_set_min_height(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_min_height(const VStyle* style);
+VUID_API void          vs_unset_min_height(VStyle* style);
+VUID_API bool          vs_has_min_height(const VStyle* style);
+
+VUID_API void          vs_set_max_height(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_max_height(const VStyle* style);
+VUID_API void          vs_unset_max_height(VStyle* style);
+VUID_API bool          vs_has_max_height(const VStyle* style);
 
 VUID_API void          vs_set_direction(VStyle* style, VDirection value);
 VUID_API VDirection    vs_get_direction(const VStyle* style);
@@ -752,63 +775,83 @@ VUID_API VOverflow     vs_get_overflow(const VStyle* style);
 VUID_API void          vs_unset_overflow(VStyle* style);
 VUID_API bool          vs_has_overflow(const VStyle* style);
 
-VUID_API void          vs_set_gap(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_gap(const VStyle* style);
+VUID_API void          vs_set_gap(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_gap(const VStyle* style);
 VUID_API void          vs_unset_gap(VStyle* style);
 VUID_API bool          vs_has_gap(const VStyle* style);
 
-VUID_API void          vs_set_padding_top(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_padding_top(const VStyle* style);
+VUID_API void          vs_set_padding_top(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_padding_top(const VStyle* style);
 VUID_API void          vs_unset_padding_top(VStyle* style);
 VUID_API bool          vs_has_padding_top(const VStyle* style);
 
-VUID_API void          vs_set_padding_right(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_padding_right(const VStyle* style);
+VUID_API void          vs_set_padding_right(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_padding_right(const VStyle* style);
 VUID_API void          vs_unset_padding_right(VStyle* style);
 VUID_API bool          vs_has_padding_right(const VStyle* style);
 
-VUID_API void          vs_set_padding_bottom(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_padding_bottom(const VStyle* style);
+VUID_API void          vs_set_padding_bottom(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_padding_bottom(const VStyle* style);
 VUID_API void          vs_unset_padding_bottom(VStyle* style);
 VUID_API bool          vs_has_padding_bottom(const VStyle* style);
 
-VUID_API void          vs_set_padding_left(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_padding_left(const VStyle* style);
+VUID_API void          vs_set_padding_left(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_padding_left(const VStyle* style);
 VUID_API void          vs_unset_padding_left(VStyle* style);
 VUID_API bool          vs_has_padding_left(const VStyle* style);
 
-VUID_API void          vs_set_border_top(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_border_top(const VStyle* style);
+VUID_API void          vs_set_margin_top(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_margin_top(const VStyle* style);
+VUID_API void          vs_unset_margin_top(VStyle* style);
+VUID_API bool          vs_has_margin_top(const VStyle* style);
+
+VUID_API void          vs_set_margin_right(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_margin_right(const VStyle* style);
+VUID_API void          vs_unset_margin_right(VStyle* style);
+VUID_API bool          vs_has_margin_right(const VStyle* style);
+
+VUID_API void          vs_set_margin_bottom(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_margin_bottom(const VStyle* style);
+VUID_API void          vs_unset_margin_bottom(VStyle* style);
+VUID_API bool          vs_has_margin_bottom(const VStyle* style);
+
+VUID_API void          vs_set_margin_left(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_margin_left(const VStyle* style);
+VUID_API void          vs_unset_margin_left(VStyle* style);
+VUID_API bool          vs_has_margin_left(const VStyle* style);
+
+VUID_API void          vs_set_border_top(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_border_top(const VStyle* style);
 VUID_API void          vs_unset_border_top(VStyle* style);
 VUID_API bool          vs_has_border_top(const VStyle* style);
 
-VUID_API void          vs_set_border_right(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_border_right(const VStyle* style);
+VUID_API void          vs_set_border_right(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_border_right(const VStyle* style);
 VUID_API void          vs_unset_border_right(VStyle* style);
 VUID_API bool          vs_has_border_right(const VStyle* style);
 
-VUID_API void          vs_set_border_bottom(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_border_bottom(const VStyle* style);
+VUID_API void          vs_set_border_bottom(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_border_bottom(const VStyle* style);
 VUID_API void          vs_unset_border_bottom(VStyle* style);
 VUID_API bool          vs_has_border_bottom(const VStyle* style);
 
-VUID_API void          vs_set_border_left(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_border_left(const VStyle* style);
+VUID_API void          vs_set_border_left(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_border_left(const VStyle* style);
 VUID_API void          vs_unset_border_left(VStyle* style);
 VUID_API bool          vs_has_border_left(const VStyle* style);
 
-VUID_API void          vs_set_border_radius(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_border_radius(const VStyle* style);
+VUID_API void          vs_set_border_radius(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_border_radius(const VStyle* style);
 VUID_API void          vs_unset_border_radius(VStyle* style);
 VUID_API bool          vs_has_border_radius(const VStyle* style);
 
-VUID_API void          vs_set_scrollbar_width(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_scrollbar_width(const VStyle* style);
+VUID_API void          vs_set_scrollbar_width(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_scrollbar_width(const VStyle* style);
 VUID_API void          vs_unset_scrollbar_width(VStyle* style);
 VUID_API bool          vs_has_scrollbar_width(const VStyle* style);
 
-VUID_API void          vs_set_scrollbar_border_radius(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_scrollbar_border_radius(const VStyle* style);
+VUID_API void          vs_set_scrollbar_border_radius(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_scrollbar_border_radius(const VStyle* style);
 VUID_API void          vs_unset_scrollbar_border_radius(VStyle* style);
 VUID_API bool          vs_has_scrollbar_border_radius(const VStyle* style);
 
@@ -817,8 +860,8 @@ VUID_API const char*   vs_get_font(const VStyle* style);
 VUID_API void          vs_unset_font(VStyle* style);
 VUID_API bool          vs_has_font(const VStyle* style);
 
-VUID_API void          vs_set_font_size(VStyle* style, uint16_t value);
-VUID_API uint16_t      vs_get_font_size(const VStyle* style);
+VUID_API void          vs_set_font_size(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_font_size(const VStyle* style);
 VUID_API void          vs_unset_font_size(VStyle* style);
 VUID_API bool          vs_has_font_size(const VStyle* style);
 
@@ -872,18 +915,18 @@ VUID_API VAttachPointY vs_get_attach_point_y(const VStyle* style);
 VUID_API void          vs_unset_attach_point_y(VStyle* style);
 VUID_API bool          vs_has_attach_point_y(const VStyle* style);
 
-VUID_API void          vs_set_attach_point_offset_x(VStyle* style, float value);
-VUID_API float         vs_get_attach_point_offset_x(const VStyle* style);
+VUID_API void          vs_set_attach_point_offset_x(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_attach_point_offset_x(const VStyle* style);
 VUID_API void          vs_unset_attach_point_offset_x(VStyle* style);
 VUID_API bool          vs_has_attach_point_offset_x(const VStyle* style);
 
-VUID_API void          vs_set_attach_point_offset_y(VStyle* style, float value);
-VUID_API float         vs_get_attach_point_offset_y(const VStyle* style);
+VUID_API void          vs_set_attach_point_offset_y(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_attach_point_offset_y(const VStyle* style);
 VUID_API void          vs_unset_attach_point_offset_y(VStyle* style);
 VUID_API bool          vs_has_attach_point_offset_y(const VStyle* style);
 
-VUID_API void          vs_set_aspect_ratio(VStyle* style, float value);
-VUID_API float         vs_get_aspect_ratio(const VStyle* style);
+VUID_API void          vs_set_aspect_ratio(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_aspect_ratio(const VStyle* style);
 VUID_API void          vs_unset_aspect_ratio(VStyle* style);
 VUID_API bool          vs_has_aspect_ratio(const VStyle* style);
 
@@ -892,34 +935,34 @@ VUID_API VPosition     vs_get_position(const VStyle* style);
 VUID_API void          vs_unset_position(VStyle* style);
 VUID_API bool          vs_has_position(const VStyle* style);
 
-VUID_API void          vs_set_top(VStyle* style, float value);
-VUID_API float         vs_get_top(const VStyle* style);
+VUID_API void          vs_set_top(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_top(const VStyle* style);
 VUID_API void          vs_unset_top(VStyle* style);
 VUID_API bool          vs_has_top(const VStyle* style);
 
-VUID_API void          vs_set_right(VStyle* style, float value);
-VUID_API float         vs_get_right(const VStyle* style);
+VUID_API void          vs_set_right(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_right(const VStyle* style);
 VUID_API void          vs_unset_right(VStyle* style);
 VUID_API bool          vs_has_right(const VStyle* style);
 
-VUID_API void          vs_set_bottom(VStyle* style, float value);
-VUID_API float         vs_get_bottom(const VStyle* style);
+VUID_API void          vs_set_bottom(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_bottom(const VStyle* style);
 VUID_API void          vs_unset_bottom(VStyle* style);
 VUID_API bool          vs_has_bottom(const VStyle* style);
 
-VUID_API void          vs_set_left(VStyle* style, float value);
-VUID_API float         vs_get_left(const VStyle* style);
+VUID_API void          vs_set_left(VStyle* style, VStyleValue value);
+VUID_API VStyleValue   vs_get_left(const VStyle* style);
 VUID_API void          vs_unset_left(VStyle* style);
 VUID_API bool          vs_has_left(const VStyle* style);
 
-static inline void vs_set_padding(VStyle* style, uint16_t t, uint16_t r, uint16_t b, uint16_t l) {
+static inline void vs_set_padding(VStyle* style, VStyleValue t, VStyleValue r, VStyleValue b, VStyleValue l) {
   vs_set_padding_top(style, t);
   vs_set_padding_right(style, r);
   vs_set_padding_bottom(style, b);
   vs_set_padding_left(style, l);
 }
 
-static inline void vs_set_border(VStyle* style, uint16_t t, uint16_t r, uint16_t b, uint16_t l) {
+static inline void vs_set_border(VStyle* style, VStyleValue t, VStyleValue r, VStyleValue b, VStyleValue l) {
   vs_set_border_top(style, t);
   vs_set_border_right(style, r);
   vs_set_border_bottom(style, b);
@@ -936,6 +979,22 @@ static inline VColor v_rgb(uint8_t r, uint8_t g, uint8_t b) {
 
 static inline VColor v_rgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
   return (VColor){r, g, b, a};
+}
+
+static inline VStyleValue v_px(float px) {
+  return (VStyleValue){V_STYLE_VALUE_UNIT_PX, {.px = px}};
+}
+
+static inline VStyleValue v_fit(void) {
+  return (VStyleValue){V_STYLE_VALUE_UNIT_FIT, {.px = 0}};
+}
+
+static inline VStyleValue v_grow(void) {
+  return (VStyleValue){V_STYLE_VALUE_UNIT_GROW, {.px = 0}};
+}
+
+static inline VStyleValue v_auto(void) {
+  return (VStyleValue){V_STYLE_VALUE_UNIT_AUTO, {.px = 0}};
 }
 
 #define v_foreach_child(NODE, CHILD)                            \
@@ -959,10 +1018,6 @@ static inline VColor v_rgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
 #define vss_extend(VAR, NAME, BASE)                              \
   for (VStyle* VAR = vss__start_class(NAME, BASE); VAR != NULL;  \
        (VAR = NULL, vss__end_class(NAME)))
-
-#define V_FIXED(VALUE) ((VSizing){V_SIZING_FIXED, VALUE, VALUE})
-#define V_FIT(...)     ((VSizing){V_SIZING_FIT,   __VA_ARGS__})
-#define V_GROW(...)    ((VSizing){V_SIZING_GROW,  __VA_ARGS__})
 
 // clang-format on
 

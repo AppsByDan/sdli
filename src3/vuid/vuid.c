@@ -107,6 +107,7 @@ static inline void v_free(const VAllocator* allocator, void* ptr, size_t size) {
 
 
 #define VUID_FLOAT_MAX_INT (1 << 24)
+#define VUID_FLOAT_MIN_INT (-(1 << 24))
 
 #ifndef M_PIf
 #define M_PIf 3.14159265358979323846f
@@ -826,15 +827,15 @@ static inline bool v_color_eq(VColor a, VColor b) {
   return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 }
 
-/* Checks if two VSizing style objects are equal */
-static inline bool v_sizing_eq(VSizing a, VSizing b) {
-  if (a.tag == b.tag) {
-    switch (a.tag) {
-      case V_SIZING_FIXED:
-      case V_SIZING_FIT:
-        return v_float_eq(a.min, b.min) && v_float_eq(a.max, b.max);
-      case V_SIZING_GROW:
-        return v_float_eq(a.min, b.min);
+static inline bool v_style_value_eq(VStyleValue a, VStyleValue b) {
+  if (a.unit == b.unit) {
+    switch (a.unit) {
+      case V_STYLE_VALUE_UNIT_PX:
+        return v_float_eq(a.value.px, b.value.px);
+      case V_STYLE_VALUE_UNIT_FIT:
+      case V_STYLE_VALUE_UNIT_GROW:
+      case V_STYLE_VALUE_UNIT_AUTO:
+        return true;
       default:
         break;
     }
@@ -1535,7 +1536,11 @@ VUID_PKG VSize v_text_layout_get_size(const VTextLayout* text_layout);
 
 typedef enum VStyleProperty {
   VS_WIDTH = 0,
+  VS_MIN_WIDTH,
+  VS_MAX_WIDTH,
   VS_HEIGHT,
+  VS_MIN_HEIGHT,
+  VS_MAX_HEIGHT,
   VS_DIRECTION,
   VS_VISIBILITY,
   VS_WRAP,
@@ -1549,6 +1554,10 @@ typedef enum VStyleProperty {
   VS_PADDING_RIGHT,
   VS_PADDING_BOTTOM,
   VS_PADDING_LEFT,
+  VS_MARGIN_TOP,
+  VS_MARGIN_RIGHT,
+  VS_MARGIN_BOTTOM,
+  VS_MARGIN_LEFT,
   VS_BORDER_TOP,
   VS_BORDER_RIGHT,
   VS_BORDER_BOTTOM,
@@ -1650,7 +1659,7 @@ struct VNode {
 
   VStaticString id;
 
-  struct VWeakRef* parent;
+  VWeakRef* parent;
   VNode* first_child;
   VNode* last_child;
   VNode* next_sibling;
@@ -1659,11 +1668,6 @@ struct VNode {
 
   VNodeEventListener event_listeners[V_NODE_EVENT__COUNT];
 
-  VRect bounds;
-  float min_width;
-  float pref_width;
-  float min_height;
-  float pref_height;
   VStyle* style;
 
   float scroll_y;
@@ -1680,7 +1684,25 @@ struct VNode {
   } res_data;
 
   void* user_data;
-  struct VWeakRef* self_weak_ref;
+  VWeakRef* self_weak_ref;
+
+  // Layout Info
+
+  /* x/y relative to parent. if popover, x/y is absolute. w/h is content box. */
+  VRect bounds;
+  /* resolved margin px values. no info about auto or percent. */
+  VInsets margin;
+  /* resolved padding px. */
+  VInsets padding;
+  /* resolved border px. */
+  VInsets border;
+
+  // cached layout values.
+
+  float min_width;
+  float pref_width;
+  float min_height;
+  float pref_height;
 };
 
 typedef enum VNodeEventFlag {
@@ -1747,6 +1769,24 @@ static inline bool v_node_event_was_cancelled(const VNodeEvent* event) {
   return v_node_event_has_flag(event, V_NODE_EVENT_FLAG_CANCELLED);
 }
 
+static inline float v_node_inset_left(const VNode* node) {
+  return node->border.left + node->padding.left;
+}
+
+static inline float v_node_inset_top(const VNode* node) {
+  return node->border.top + node->padding.top;
+}
+
+static inline float v_node_inset_width(const VNode* node) {
+  return node->border.left + node->border.right + node->padding.left +
+         node->padding.right;
+}
+
+static inline float v_node_inset_height(const VNode* node) {
+  return node->border.top + node->border.bottom + node->padding.top +
+         node->padding.bottom;
+}
+
 // starting from the node itself, traverse up the ancestors until null
 #define v_foreach_ancestor(NODE, ITER) \
   for (VNode* ITER = NODE; ITER; ITER = v_node_parent(ITER))
@@ -1762,8 +1802,8 @@ typedef enum VStylePropertyTag {
   VSTAG_UNSET,
   VSTAG_SIZING,
   VSTAG_COLOR,
-  VSTAG_UINT,
   VSTAG_STRING,
+  VSTAG_STYLE_VALUE,
   VSTAG_ENUM_DIRECTION,
   VSTAG_ENUM_WRAP,
   VSTAG_ENUM_XALIGN,
@@ -1775,17 +1815,14 @@ typedef enum VStylePropertyTag {
   VSTAG_ENUM_ATTACH_POINT_Y,
   VSTAG_ENUM_POSITION,
   VSTAG_ENUM_VISIBILITY,
-  VSTAG_FLOAT,
 } VStylePropertyTag;
 
 typedef struct VStylePropertyMeta {
   VStylePropertyTag tag;
 
   union {
-    VSizing sizing;
+    VStyleValue style_value;
     VColor color;
-    uint16_t uint;
-    float fval;
     VDirection direction;
     VWrap wrap;
     VAlignX xalign;
@@ -1802,10 +1839,8 @@ typedef struct VStylePropertyMeta {
   } default_value;
 
   union {
-    void (*sizing)(VStyle*, VSizing);
+    void (*style_value)(VStyle*, VStyleValue);
     void (*color)(VStyle*, VColor);
-    void (*uint)(VStyle*, uint16_t);
-    void (*fval)(VStyle*, float);
     void (*direction)(VStyle*, VDirection);
     void (*wrap)(VStyle*, VWrap);
     void (*xalign)(VStyle*, VAlignX);
@@ -1821,10 +1856,8 @@ typedef struct VStylePropertyMeta {
   } set_fn;
 
   union {
-    VSizing (*sizing)(const VStyle*);
+    VStyleValue (*style_value)(const VStyle*);
     VColor (*color)(const VStyle*);
-    uint16_t (*uint)(const VStyle*);
-    float (*fval)(const VStyle*);
     VDirection (*direction)(const VStyle*);
     VWrap (*wrap)(const VStyle*);
     VAlignX (*xalign)(const VStyle*);
@@ -1838,6 +1871,11 @@ typedef struct VStylePropertyMeta {
     VVisibility (*visibility)(const VStyle*);
     const char* (*str)(const VStyle*);
   } get_fn;
+
+  union {
+    bool (*style_value)(VStyleValue*);
+    bool (*str)(const char**);
+  } validate_fn;
 
   /* if true, change to this prop marks owner as dirty. */
   bool affects_layout;
@@ -1857,10 +1895,44 @@ VUID_PKG const VStylePropertyMeta* v_style_get_prop_meta(
 
 
 
+typedef enum VSizeMode {
+  V_SIZE_MODE_FIT,
+  V_SIZE_MODE_GROW,
+  V_SIZE_MODE_FIXED,
+} VSizeMode;
+
 struct VStyle {
   const char* font;
-  VSizing width;
-  VSizing height;
+  VStyleValue width;
+  VStyleValue min_width;
+  VStyleValue max_width;
+  VStyleValue height;
+  VStyleValue min_height;
+  VStyleValue max_height;
+  VStyleValue top;
+  VStyleValue right;
+  VStyleValue bottom;
+  VStyleValue left;
+  VStyleValue gap;
+  VStyleValue aspect_ratio;
+  VStyleValue margin_top;
+  VStyleValue margin_right;
+  VStyleValue margin_bottom;
+  VStyleValue margin_left;
+  VStyleValue attach_point_offset_x;
+  VStyleValue attach_point_offset_y;
+  VStyleValue padding_top;
+  VStyleValue padding_right;
+  VStyleValue padding_bottom;
+  VStyleValue padding_left;
+  VStyleValue border_top;
+  VStyleValue border_right;
+  VStyleValue border_bottom;
+  VStyleValue border_left;
+  VStyleValue font_size;
+  VStyleValue border_radius;
+  VStyleValue scrollbar_width;
+  VStyleValue scrollbar_border_radius;
   VColor background;
   VColor color;
   VColor border_color;
@@ -1880,26 +1952,7 @@ struct VStyle {
   VOverflow overflow;
   VPosition position;
   VVisibility visibility;
-  uint16_t font_size;
-  uint16_t gap;
-  uint16_t padding_top;
-  uint16_t padding_right;
-  uint16_t padding_bottom;
-  uint16_t padding_left;
-  uint16_t border_top;
-  uint16_t border_right;
-  uint16_t border_bottom;
-  uint16_t border_left;
-  uint16_t border_radius;
-  uint16_t scrollbar_width;
-  uint16_t scrollbar_border_radius;
-  float top;
-  float right;
-  float bottom;
-  float left;
-  float attach_point_offset_x;
-  float attach_point_offset_y;
-  float aspect_ratio;
+
   uint32_t ref_count;
 
   VNode* owner;
@@ -1915,41 +1968,184 @@ VUID_PKG void v_style_flatten(VStyle* a, VStyle* b);
 VUID_PKG VNode* v_style_get_owner(const VStyle* style);
 VUID_PKG void v_style_set_owner(VStyle* style, VNode* owner);
 
-/* get width sizing tag */
-static inline VSizingTag vs__get_width_tag(const VStyle* style) {
-  return vs_get_width(style).tag;
+static inline VSizeMode v_style_resolve_size_mode(VStyleValueUnit unit) {
+  switch (unit) {
+    case V_STYLE_VALUE_UNIT_AUTO:
+      // TODO: auto policy should consider parent's direction
+      return V_SIZE_MODE_FIT;
+    case V_STYLE_VALUE_UNIT_FIT:
+      return V_SIZE_MODE_FIT;
+    case V_STYLE_VALUE_UNIT_GROW:
+      return V_SIZE_MODE_GROW;
+    default:
+      return V_SIZE_MODE_FIXED;
+  }
 }
 
-/* get height sizing tag */
-static inline VSizingTag vs__get_height_tag(const VStyle* style) {
-  return vs_get_height(style).tag;
+static inline float v_style_resolve_length(const VStyleValue* value) {
+  switch (value->unit) {
+    case V_STYLE_VALUE_UNIT_PX:
+      return value->value.px;
+    case V_STYLE_VALUE_UNIT_AUTO:
+    default:
+      return 0.0f;
+  }
 }
 
-/* get padding and border horizontal insets */
-static inline float v_style_box_inset_width(const VStyle* style) {
-  return (float)(vs_get_padding_left(style) + vs_get_padding_right(style) +
-                 vs_get_border_left(style) + vs_get_border_right(style));
-}
-
-/* get padding and border vertical insets */
-static inline float v_style_box_inset_height(const VStyle* style) {
-  return (float)(vs_get_padding_top(style) + vs_get_padding_bottom(style) +
-                 vs_get_border_top(style) + vs_get_border_bottom(style));
-}
-
-/* get padding and border left inset */
-static inline float v_style_box_inset_left(const VStyle* style) {
-  return (float)(vs_get_padding_left(style) + vs_get_border_left(style));
-}
-
-/* get padding and border top inset */
-static inline float v_style_box_inset_top(const VStyle* style) {
-  return (float)(vs_get_padding_top(style) + vs_get_border_top(style));
+static inline float v_style_resolve_length_ceil(const VStyleValue* value) {
+  switch (value->unit) {
+    case V_STYLE_VALUE_UNIT_PX:
+      return ceilf(value->value.px);
+    case V_STYLE_VALUE_UNIT_AUTO:
+    default:
+      return 0.0f;
+  }
 }
 
 /* check if a style has a specific property set */
 static inline bool vs_has_prop(const VStyle* style, VStyleProperty property) {
   return (style->is_set & (((uint64_t)1) << property)) != 0;
+}
+
+// TODO: these resolve functions are kinda awful.. refactor
+
+static inline uint16_t v_style_resolve_font_size(const VStyle* style) {
+  return vs_has_prop(style, VS_FONT_SIZE)
+             ? (uint16_t)v_style_resolve_length_ceil(&style->font_size)
+             : 0;
+}
+
+static inline uint16_t v_style_resolve_scrollbar_width(const VStyle* style) {
+  return vs_has_prop(style, VS_SCROLLBAR_WIDTH)
+             ? (uint16_t)v_style_resolve_length_ceil(&style->scrollbar_width)
+             : 0;
+}
+
+static inline uint16_t v_style_resolve_scrollbar_border_radius(
+    const VStyle* style) {
+  return vs_has_prop(style, VS_SCROLLBAR_BORDER_RADIUS)
+             ? (uint16_t)v_style_resolve_length_ceil(
+                   &style->scrollbar_border_radius)
+             : 0;
+}
+
+static inline uint16_t v_style_resolve_border_radius(const VStyle* style) {
+  return vs_has_prop(style, VS_BORDER_RADIUS)
+             ? (uint16_t)v_style_resolve_length_ceil(&style->border_radius)
+             : 0;
+}
+
+static inline VSizeMode v_style_resolve_width_size_mode(const VStyle* style) {
+  return v_style_resolve_size_mode(
+      vs_has_width(style) ? vs_get_width(style).unit : V_STYLE_VALUE_UNIT_AUTO);
+}
+
+static inline VSizeMode v_style_resolve_height_size_mode(const VStyle* style) {
+  return v_style_resolve_size_mode(vs_has_height(style)
+                                       ? vs_get_height(style).unit
+                                       : V_STYLE_VALUE_UNIT_AUTO);
+}
+
+static inline bool v_style_resolve_fixed_width(const VStyle* style,
+                                               float* out) {
+  return vs_has_prop(style, VS_WIDTH) &&
+         style->width.unit == V_STYLE_VALUE_UNIT_PX &&
+         (*out = style->width.value.px, true);
+}
+
+static inline bool v_style_resolve_fixed_height(const VStyle* style,
+                                                float* out) {
+  return vs_has_prop(style, VS_HEIGHT) &&
+         style->height.unit == V_STYLE_VALUE_UNIT_PX &&
+         (*out = style->height.value.px, true);
+}
+
+static inline float v_style_resolve_min_width(const VStyle* style) {
+  return vs_has_prop(style, VS_MIN_WIDTH)
+             ? v_style_resolve_length(&style->min_width)
+             : 0.0f;
+}
+
+static inline float v_style_resolve_max_width(const VStyle* style) {
+  return vs_has_prop(style, VS_MAX_WIDTH)
+             ? v_style_resolve_length(&style->max_width)
+             : 0.0f;
+}
+
+static inline float v_style_resolve_min_height(const VStyle* style) {
+  return vs_has_prop(style, VS_MIN_HEIGHT)
+             ? v_style_resolve_length(&style->min_height)
+             : 0.0f;
+}
+
+static inline float v_style_resolve_max_height(const VStyle* style) {
+  return vs_has_prop(style, VS_MAX_HEIGHT)
+             ? v_style_resolve_length(&style->max_height)
+             : 0.0f;
+}
+
+static inline float v_style_resolve_top(const VStyle* style) {
+  return vs_has_prop(style, VS_TOP) ? v_style_resolve_length(&style->top)
+                                    : 0.0f;
+}
+
+static inline float v_style_resolve_right(const VStyle* style) {
+  return vs_has_prop(style, VS_RIGHT) ? v_style_resolve_length(&style->right)
+                                      : 0.0f;
+}
+
+static inline float v_style_resolve_bottom(const VStyle* style) {
+  return vs_has_prop(style, VS_BOTTOM) ? v_style_resolve_length(&style->bottom)
+                                       : 0.0f;
+}
+
+static inline float v_style_resolve_left(const VStyle* style) {
+  return vs_has_prop(style, VS_LEFT) ? v_style_resolve_length(&style->left)
+                                     : 0.0f;
+}
+
+static inline float v_style_resolve_gap(const VStyle* style) {
+  return vs_has_prop(style, VS_GAP) ? v_style_resolve_length(&style->gap)
+                                    : 0.0f;
+}
+
+static inline float v_style_resolve_aspect_ratio(const VStyle* style) {
+  // TODO: support auto
+  return vs_has_prop(style, VS_ASPECT_RATIO)
+             ? v_style_resolve_length(&style->aspect_ratio)
+             : 0.0f;
+}
+
+static inline bool v_style_margin_is_auto_top(const VStyle* style) {
+  return vs_has_prop(style, VS_MARGIN_TOP) &&
+         style->margin_top.unit == V_STYLE_VALUE_UNIT_AUTO;
+}
+
+static inline bool v_style_margin_is_auto_right(const VStyle* style) {
+  return vs_has_prop(style, VS_MARGIN_RIGHT) &&
+         style->margin_right.unit == V_STYLE_VALUE_UNIT_AUTO;
+}
+
+static inline bool v_style_margin_is_auto_bottom(const VStyle* style) {
+  return vs_has_prop(style, VS_MARGIN_BOTTOM) &&
+         style->margin_bottom.unit == V_STYLE_VALUE_UNIT_AUTO;
+}
+
+static inline bool v_style_margin_is_auto_left(const VStyle* style) {
+  return vs_has_prop(style, VS_MARGIN_LEFT) &&
+         style->margin_left.unit == V_STYLE_VALUE_UNIT_AUTO;
+}
+
+static inline float v_style_resolve_attach_point_offset_x(const VStyle* style) {
+  return vs_has_prop(style, VS_ATTACH_POINT_OFFSET_X)
+             ? v_style_resolve_length(&style->attach_point_offset_x)
+             : 0.0f;
+}
+
+static inline float v_style_resolve_attach_point_offset_y(const VStyle* style) {
+  return vs_has_prop(style, VS_ATTACH_POINT_OFFSET_Y)
+             ? v_style_resolve_length(&style->attach_point_offset_y)
+             : 0.0f;
 }
 
 #endif  // VUID_NODE_STYLE_H
@@ -5749,6 +5945,11 @@ VUID_PKG bool v_te_shape(VTextEngine* self,
 
 
 #define VUID_EQ(A, B) ((A) == (B))
+#define VUID_SV_ZERO \
+  { .unit = V_STYLE_VALUE_UNIT_PX, .value.px = 0.0f }
+#define VUID_VALIDATE_PROP(PROP, META_KEY, VALUE) \
+  g_style_props[PROP].validate_fn.META_KEY(&VALUE)
+#define VUID_VALIDATE_NONE(PROP, META_KEY, VALUE)
 
 // TODO: send event to owner, rather than doing the owner's work here
 #define VUID_PROPERTY_UPDATE_OWNER(STYLE, PROPERTY)            \
@@ -5771,12 +5972,13 @@ VUID_PKG bool v_te_shape(VTextEngine* self,
     }                                                          \
   } while (0)
 
-#define VUID_PROPERTY_FUNCTIONS_IMPL(PROPERTY, FIELD, TYPE, CMP, META_KEY) \
+#define VUID_PROPERTY_FUNCTIONS_IMPL(PROPERTY, FIELD, TYPE, CMP, META_KEY, \
+                                     VAL)                                  \
   VUID_API void vs_set_##FIELD(VStyle* style, TYPE value) {                \
     if (!style) {                                                          \
       return;                                                              \
     }                                                                      \
-                                                                           \
+    VAL(PROPERTY, META_KEY, value);                                        \
     if (vs_has_prop(style, PROPERTY) && CMP(style->FIELD, value)) {        \
       return;                                                              \
     }                                                                      \
@@ -5803,23 +6005,82 @@ VUID_PKG bool v_te_shape(VTextEngine* self,
     return (style && vs_has_prop(style, PROPERTY));                        \
   }
 
-static bool v_color_eq(VColor a, VColor b);
-static bool v_sizing_eq(VSizing a, VSizing b);
+static bool v_style_validate_string(const char** value);
+static bool v_style_validate_float(VStyleValue* value);
+static bool v_style_validate_gte0_auto(VStyleValue* value);
+static bool v_style_validate_dimension(VStyleValue* value);
+static bool v_style_validate_gte0(VStyleValue* value);
+
+static inline void v_clamp_length(float* value) {
+  const float v = *value;
+
+  if (isnan(v)) {
+    *value = 0;
+  } else if (v > VUID_FLOAT_MAX_INT) {
+    *value = VUID_FLOAT_MAX_INT;
+  } else if (v < VUID_FLOAT_MIN_INT) {
+    *value = -VUID_FLOAT_MIN_INT;
+  }
+}
+
+static inline void v_clamp_length_gte0(float* value) {
+  const float v = *value;
+
+  if (isnan(v) || v < 0) {
+    *value = 0;
+  } else if (v > VUID_FLOAT_MAX_INT) {
+    *value = VUID_FLOAT_MAX_INT;
+  }
+}
 
 static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
     // clang-format off
     [VS_WIDTH] = {
-      .tag = VSTAG_SIZING,
-      .default_value.sizing = {V_SIZING_FIT, 0, 0},
-      .set_fn.sizing = &vs_set_width,
-      .get_fn.sizing = &vs_get_width,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value.unit = V_STYLE_VALUE_UNIT_AUTO,
+      .validate_fn.style_value = &v_style_validate_dimension,
+      .set_fn.style_value = &vs_set_width,
+      .get_fn.style_value = &vs_get_width,
+      .affects_layout = true,
+    },
+    [VS_MIN_WIDTH] = {
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0_auto,
+      .set_fn.style_value = &vs_set_min_width,
+      .get_fn.style_value = &vs_get_min_width,
+      .affects_layout = true,
+    },
+    [VS_MAX_WIDTH] = {
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0_auto,
+      .set_fn.style_value = &vs_set_max_width,
+      .get_fn.style_value = &vs_get_max_width,
       .affects_layout = true,
     },
     [VS_HEIGHT] = {
-      .tag = VSTAG_SIZING,
-      .default_value.sizing = {V_SIZING_FIT, 0, 0},
-      .set_fn.sizing = &vs_set_height,
-      .get_fn.sizing = &vs_get_height,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value.unit = V_STYLE_VALUE_UNIT_AUTO,
+      .validate_fn.style_value = &v_style_validate_dimension,
+      .set_fn.style_value = &vs_set_height,
+      .get_fn.style_value = &vs_get_height,
+      .affects_layout = true,
+    },
+    [VS_MIN_HEIGHT] = {
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0_auto,
+      .set_fn.style_value = &vs_set_min_height,
+      .get_fn.style_value = &vs_get_min_height,
+      .affects_layout = true,
+    },
+    [VS_MAX_HEIGHT] = {
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0_auto,
+      .set_fn.style_value = &vs_set_max_height,
+      .get_fn.style_value = &vs_get_max_height,
       .affects_layout = true,
     },
     [VS_DIRECTION] = {
@@ -5882,103 +6143,149 @@ static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
       .affects_layout = true,
     },
     [VS_GAP] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_gap,
-      .get_fn.uint = &vs_get_gap,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_gap,
+      .get_fn.style_value = &vs_get_gap,
       .affects_layout = true,
     },
     [VS_PADDING_TOP] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_padding_top,
-      .get_fn.uint = &vs_get_padding_top,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_padding_top,
+      .get_fn.style_value = &vs_get_padding_top,
       .affects_layout = true,
     },
     [VS_PADDING_RIGHT] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_padding_right,
-      .get_fn.uint = &vs_get_padding_right,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_padding_right,
+      .get_fn.style_value = &vs_get_padding_right,
       .affects_layout = true,
     },
     [VS_PADDING_BOTTOM] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_padding_bottom,
-      .get_fn.uint = &vs_get_padding_bottom,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_padding_bottom,
+      .get_fn.style_value = &vs_get_padding_bottom,
       .affects_layout = true,
     },
     [VS_PADDING_LEFT] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_padding_left,
-      .get_fn.uint = &vs_get_padding_left,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_padding_left,
+      .get_fn.style_value = &vs_get_padding_left,
+      .affects_layout = true,
+    },
+    [VS_MARGIN_TOP] = {
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0_auto,
+      .set_fn.style_value = &vs_set_margin_top,
+      .get_fn.style_value = &vs_get_margin_top,
+      .affects_layout = true,
+    },
+    [VS_MARGIN_RIGHT] = {
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0_auto,
+      .set_fn.style_value = &vs_set_margin_right,
+      .get_fn.style_value = &vs_get_margin_right,
+      .affects_layout = true,
+    },
+    [VS_MARGIN_BOTTOM] = {
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0_auto,
+      .set_fn.style_value = &vs_set_margin_bottom,
+      .get_fn.style_value = &vs_get_margin_bottom,
+      .affects_layout = true,
+    },
+    [VS_MARGIN_LEFT] = {
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0_auto,
+      .set_fn.style_value = &vs_set_margin_left,
+      .get_fn.style_value = &vs_get_margin_left,
       .affects_layout = true,
     },
     [VS_BORDER_TOP] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_border_top,
-      .get_fn.uint = &vs_get_border_top,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_border_top,
+      .get_fn.style_value = &vs_get_border_top,
       .affects_layout = true,
     },
     [VS_BORDER_RIGHT] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_border_right,
-      .get_fn.uint = &vs_get_border_right,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_border_right,
+      .get_fn.style_value = &vs_get_border_right,
       .affects_layout = true,
     },
     [VS_BORDER_BOTTOM] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_border_bottom,
-      .get_fn.uint = &vs_get_border_bottom,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_border_bottom,
+      .get_fn.style_value = &vs_get_border_bottom,
       .affects_layout = true,
     },
     [VS_BORDER_LEFT] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_border_left,
-      .get_fn.uint = &vs_get_border_left,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_border_left,
+      .get_fn.style_value = &vs_get_border_left,
       .affects_layout = true,
     },
     [VS_BORDER_RADIUS] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_border_radius,
-      .get_fn.uint = &vs_get_border_radius,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_border_radius,
+      .get_fn.style_value = &vs_get_border_radius,
       .affects_render = true,
     },
     [VS_FONT] = {
       .tag = VSTAG_STRING,
       .default_value.str = "",
+      .validate_fn.str = &v_style_validate_string,
       .set_fn.str = &vs_set_font,
       .get_fn.str = &vs_get_font,
       .affects_layout = true,
       .affects_text_style = true,
     },
     [VS_FONT_SIZE] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_font_size,
-      .get_fn.uint = &vs_get_font_size,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_font_size,
+      .get_fn.style_value = &vs_get_font_size,
       .affects_layout = true,
       .affects_text_style = true,
     },
     [VS_SCROLLBAR_WIDTH] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_scrollbar_width,
-      .get_fn.uint = &vs_get_scrollbar_width,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_scrollbar_width,
+      .get_fn.style_value = &vs_get_scrollbar_width,
       .affects_layout = true,
     },
     [VS_SCROLLBAR_BORDER_RADIUS] = {
-      .tag = VSTAG_UINT,
-      .default_value.uint = 0,
-      .set_fn.uint = &vs_set_scrollbar_border_radius,
-      .get_fn.uint = &vs_get_scrollbar_border_radius,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_scrollbar_border_radius,
+      .get_fn.style_value = &vs_get_scrollbar_border_radius,
       .affects_render = true,
     },
     [VS_BACKGROUND] = {
@@ -6052,24 +6359,27 @@ static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
       .affects_layout = true,
     },
     [VS_ATTACH_POINT_OFFSET_X] = {
-      .tag = VSTAG_FLOAT,
-      .default_value.fval = 0,
-      .set_fn.fval = &vs_set_attach_point_offset_x,
-      .get_fn.fval = &vs_get_attach_point_offset_x,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_float,
+      .set_fn.style_value = &vs_set_attach_point_offset_x,
+      .get_fn.style_value = &vs_get_attach_point_offset_x,
       .affects_layout = true,
     },
     [VS_ATTACH_POINT_OFFSET_Y] = {
-      .tag = VSTAG_FLOAT,
-      .default_value.fval = 0,
-      .set_fn.fval = &vs_set_attach_point_offset_y,
-      .get_fn.fval = &vs_get_attach_point_offset_y,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_float,
+      .set_fn.style_value = &vs_set_attach_point_offset_y,
+      .get_fn.style_value = &vs_get_attach_point_offset_y,
       .affects_layout = true,
     },
     [VS_ASPECT_RATIO] = {
-      .tag = VSTAG_FLOAT,
-      .default_value.fval = 0,
-      .set_fn.fval = &vs_set_aspect_ratio,
-      .get_fn.fval = &vs_get_aspect_ratio,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_gte0,
+      .set_fn.style_value = &vs_set_aspect_ratio,
+      .get_fn.style_value = &vs_get_aspect_ratio,
       .affects_layout = true,
     },
     [VS_POSITION] = {
@@ -6080,31 +6390,35 @@ static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
       .affects_layout = true,
     },
     [VS_TOP] = {
-      .tag = VSTAG_FLOAT,
-      .default_value.fval = 0,
-      .set_fn.fval = &vs_set_top,
-      .get_fn.fval = &vs_get_top,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_float,
+      .set_fn.style_value = &vs_set_top,
+      .get_fn.style_value = &vs_get_top,
       .affects_layout = true,
     },
     [VS_RIGHT] = {
-      .tag = VSTAG_FLOAT,
-      .default_value.fval = 0,
-      .set_fn.fval = &vs_set_right,
-      .get_fn.fval = &vs_get_right,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_float,
+      .set_fn.style_value = &vs_set_right,
+      .get_fn.style_value = &vs_get_right,
       .affects_layout = true,
     },
     [VS_BOTTOM] = {
-      .tag = VSTAG_FLOAT,
-      .default_value.fval = 0,
-      .set_fn.fval = &vs_set_bottom,
-      .get_fn.fval = &vs_get_bottom,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_float,
+      .set_fn.style_value = &vs_set_bottom,
+      .get_fn.style_value = &vs_get_bottom,
       .affects_layout = true,
     },
     [VS_LEFT] = {
-      .tag = VSTAG_FLOAT,
-      .default_value.fval = 0,
-      .set_fn.fval = &vs_set_left,
-      .get_fn.fval = &vs_get_left,
+      .tag = VSTAG_STYLE_VALUE,
+      .default_value.style_value = VUID_SV_ZERO,
+      .validate_fn.style_value = &v_style_validate_float,
+      .set_fn.style_value = &vs_set_left,
+      .get_fn.style_value = &vs_get_left,
       .affects_layout = true,
     },
     // clang-format on
@@ -6116,6 +6430,59 @@ VUID_PKG const VStylePropertyMeta* v_style_get_prop_meta(
                                                : NULL;
 }
 
+static bool v_style_validate_string(const char** value) {
+  if (*value == NULL) {
+    *value = "";
+  }
+  return true;
+}
+
+static bool v_style_validate_float(VStyleValue* value) {
+  switch (value->unit) {
+    case V_STYLE_VALUE_UNIT_PX:
+      v_clamp_length(&value->value.px);
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool v_style_validate_gte0_auto(VStyleValue* value) {
+  switch (value->unit) {
+    case V_STYLE_VALUE_UNIT_PX:
+      v_clamp_length_gte0(&value->value.px);
+      return true;
+    case V_STYLE_VALUE_UNIT_AUTO:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool v_style_validate_dimension(VStyleValue* value) {
+  switch (value->unit) {
+    case V_STYLE_VALUE_UNIT_PX:
+      v_clamp_length_gte0(&value->value.px);
+      return true;
+    case V_STYLE_VALUE_UNIT_AUTO:
+    case V_STYLE_VALUE_UNIT_FIT:
+    case V_STYLE_VALUE_UNIT_GROW:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool v_style_validate_gte0(VStyleValue* value) {
+  switch (value->unit) {
+    case V_STYLE_VALUE_UNIT_PX:
+      v_clamp_length_gte0(&value->value.px);
+      return true;
+    default:
+      return false;
+  }
+}
+
 #ifdef _MSC_VER
 // property specific ifs trigger C4127 warning
 #pragma warning(push)
@@ -6123,48 +6490,56 @@ VUID_PKG const VStylePropertyMeta* v_style_get_prop_meta(
 #endif
 
 // clang-format off
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_WIDTH, width, VSizing, v_sizing_eq, sizing)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_HEIGHT, height, VSizing, v_sizing_eq, sizing)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_DIRECTION, direction, VDirection, VUID_EQ, direction)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_VISIBILITY, visibility, VVisibility, VUID_EQ, visibility)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_WRAP, wrap, VWrap, VUID_EQ, wrap)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_XALIGN, xalign, VAlignX, VUID_EQ, xalign)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_YALIGN, yalign, VAlignY, VUID_EQ, yalign)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_TALIGN, talign, VAlignX, VUID_EQ, talign)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_TEXT_WRAP, text_wrap, VTextWrap, VUID_EQ, text_wrap)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_OVERFLOW, overflow, VOverflow, VUID_EQ, overflow)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_GAP, gap, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_PADDING_TOP, padding_top, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_PADDING_RIGHT, padding_right, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_PADDING_BOTTOM, padding_bottom, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_PADDING_LEFT, padding_left, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_TOP, border_top, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_RIGHT, border_right, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_BOTTOM, border_bottom, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_LEFT, border_left, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_RADIUS, border_radius, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_FONT, font, const char*, v_cstr_eq, str)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_FONT_SIZE, font_size, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_SCROLLBAR_WIDTH, scrollbar_width, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_SCROLLBAR_BORDER_RADIUS, scrollbar_border_radius, uint16_t, VUID_EQ, uint)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_BACKGROUND, background, VColor, v_color_eq, color)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_COLOR, color, VColor, v_color_eq, color)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_COLOR, border_color, VColor, v_color_eq, color)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_SCROLLBAR_THUMB, scrollbar_thumb, VColor, v_color_eq, color)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_SCROLLBAR_THUMB_HOVER, scrollbar_thumb_hover, VColor, v_color_eq, color)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_ANCHOR_TO, anchor_to, VAnchorTo, VUID_EQ, anchor_to)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_ANCHOR_ATTACH_POINT_X, anchor_attach_point_x, VAttachPointX, VUID_EQ, attach_point_x)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_ANCHOR_ATTACH_POINT_Y, anchor_attach_point_y, VAttachPointY, VUID_EQ, attach_point_y)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_ATTACH_POINT_X, attach_point_x, VAttachPointX, VUID_EQ, attach_point_x)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_ATTACH_POINT_Y, attach_point_y, VAttachPointY, VUID_EQ, attach_point_y)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_ATTACH_POINT_OFFSET_X, attach_point_offset_x, float, v_float_eq, fval)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_ATTACH_POINT_OFFSET_Y, attach_point_offset_y, float, v_float_eq, fval)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_ASPECT_RATIO, aspect_ratio, float, v_float_eq, fval)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_POSITION, position, VPosition, VUID_EQ, position)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_TOP, top, float, v_float_eq, fval)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_RIGHT, right, float, v_float_eq, fval)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_BOTTOM, bottom, float, v_float_eq, fval)
-VUID_PROPERTY_FUNCTIONS_IMPL(VS_LEFT, left, float, v_float_eq, fval)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_WIDTH, width, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_MIN_WIDTH, min_width, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_MAX_WIDTH, max_width, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_HEIGHT, height, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_MIN_HEIGHT, min_height, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_MAX_HEIGHT, max_height, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_DIRECTION, direction, VDirection, VUID_EQ, direction, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_VISIBILITY, visibility, VVisibility, VUID_EQ, visibility, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_WRAP, wrap, VWrap, VUID_EQ, wrap, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_XALIGN, xalign, VAlignX, VUID_EQ, xalign, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_YALIGN, yalign, VAlignY, VUID_EQ, yalign, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_TALIGN, talign, VAlignX, VUID_EQ, talign, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_TEXT_WRAP, text_wrap, VTextWrap, VUID_EQ, text_wrap, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_OVERFLOW, overflow, VOverflow, VUID_EQ, overflow, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_GAP, gap, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_PADDING_TOP, padding_top, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_PADDING_RIGHT, padding_right, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_PADDING_BOTTOM, padding_bottom, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_PADDING_LEFT, padding_left, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_MARGIN_TOP, margin_top, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_MARGIN_RIGHT, margin_right, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_MARGIN_BOTTOM, margin_bottom, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_MARGIN_LEFT, margin_left, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_TOP, border_top, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_RIGHT, border_right, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_BOTTOM, border_bottom, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_LEFT, border_left, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_RADIUS, border_radius, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_FONT, font, const char*, v_cstr_eq, str, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_FONT_SIZE, font_size, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_SCROLLBAR_WIDTH, scrollbar_width, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_SCROLLBAR_BORDER_RADIUS, scrollbar_border_radius, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_BACKGROUND, background, VColor, v_color_eq, color, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_COLOR, color, VColor, v_color_eq, color, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_COLOR, border_color, VColor, v_color_eq, color, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_SCROLLBAR_THUMB, scrollbar_thumb, VColor, v_color_eq, color, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_SCROLLBAR_THUMB_HOVER, scrollbar_thumb_hover, VColor, v_color_eq, color, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_ANCHOR_TO, anchor_to, VAnchorTo, VUID_EQ, anchor_to, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_ANCHOR_ATTACH_POINT_X, anchor_attach_point_x, VAttachPointX, VUID_EQ, attach_point_x, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_ANCHOR_ATTACH_POINT_Y, anchor_attach_point_y, VAttachPointY, VUID_EQ, attach_point_y, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_ATTACH_POINT_X, attach_point_x, VAttachPointX, VUID_EQ, attach_point_x, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_ATTACH_POINT_Y, attach_point_y, VAttachPointY, VUID_EQ, attach_point_y, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_ATTACH_POINT_OFFSET_X, attach_point_offset_x, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_ATTACH_POINT_OFFSET_Y, attach_point_offset_y, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_ASPECT_RATIO, aspect_ratio, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_POSITION, position, VPosition, VUID_EQ, position, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_TOP, top, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_RIGHT, right, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_BOTTOM, bottom, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_LEFT, left, VStyleValue, v_style_value_eq, style_value, VUID_VALIDATE_PROP)
 // clang-format on
 
 #ifdef _MSC_VER
@@ -6256,7 +6631,7 @@ VUID_API float v_style_measure_text_w(const VStyle* style, const char* text) {
     return 0.f;
   }
 
-  const uint16_t font_size = vs_get_font_size(style);
+  const uint16_t font_size = v_style_resolve_font_size(style);
 
   VTextLayout* layout = v_text_module_create_layout_z(
       text_module, font_id, font_size, text, strlen(text), V_TEXT_WRAP_NO_WRAP,
@@ -6299,14 +6674,11 @@ VUID_PKG void v_style_flatten(VStyle* a, VStyle* b) {
     const VStylePropertyMeta* meta = v_style_get_prop_meta((VStyleProperty)i);
 
     switch (meta->tag) {
-      case VSTAG_SIZING:
-        meta->set_fn.sizing(a, meta->get_fn.sizing(b));
+      case VSTAG_STYLE_VALUE:
+        meta->set_fn.style_value(a, meta->get_fn.style_value(b));
         break;
       case VSTAG_COLOR:
         meta->set_fn.color(a, meta->get_fn.color(b));
-        break;
-      case VSTAG_UINT:
-        meta->set_fn.uint(a, meta->get_fn.uint(b));
         break;
       case VSTAG_STRING:
         meta->set_fn.str(a, meta->get_fn.str(b));
@@ -6340,9 +6712,6 @@ VUID_PKG void v_style_flatten(VStyle* a, VStyle* b) {
         break;
       case VSTAG_ENUM_POSITION:
         meta->set_fn.position(a, meta->get_fn.position(b));
-        break;
-      case VSTAG_FLOAT:
-        meta->set_fn.fval(a, meta->get_fn.fval(b));
         break;
       default:
         // TODO: unreachable
@@ -6456,8 +6825,9 @@ static VSize v__compute_text_pref_size(VNode* node, const VStyle* node_style) {
   }
 
   text_layout = v_text_module_create_layout(
-      text_module, font_id, vs_get_font_size(node_style), node->res_data.text,
-      V_TEXT_WRAP_NO_WRAP, vs_get_talign(node_style), 0.0f);
+      text_module, font_id, v_style_resolve_font_size(node_style),
+      node->res_data.text, V_TEXT_WRAP_NO_WRAP, vs_get_talign(node_style),
+      0.0f);
 
   v_node_set_text_layout(node, text_layout);
 
@@ -6466,6 +6836,48 @@ static VSize v__compute_text_pref_size(VNode* node, const VStyle* node_style) {
 
 static VSize v__compute_image_pref_size(VNode* node) {
   return v_image_get_size(node->res.image_resource);
+}
+
+static void v_resolve_style(VNode* node, const VStyle* style) {
+  node->margin.left = vs_has_prop(style, VS_MARGIN_LEFT)
+                          ? v_style_resolve_length(&style->margin_left)
+                          : 0.0f;
+  node->margin.right = vs_has_prop(style, VS_MARGIN_RIGHT)
+                           ? v_style_resolve_length(&style->margin_right)
+                           : 0.0f;
+  node->margin.top = vs_has_prop(style, VS_MARGIN_TOP)
+                         ? v_style_resolve_length(&style->margin_top)
+                         : 0.0f;
+  node->margin.bottom = vs_has_prop(style, VS_MARGIN_BOTTOM)
+                            ? v_style_resolve_length(&style->margin_bottom)
+                            : 0.0f;
+
+  node->padding.left = vs_has_prop(style, VS_PADDING_LEFT)
+                           ? v_style_resolve_length(&style->padding_left)
+                           : 0.0f;
+  node->padding.right = vs_has_prop(style, VS_PADDING_RIGHT)
+                            ? v_style_resolve_length(&style->padding_right)
+                            : 0.0f;
+  node->padding.bottom = vs_has_prop(style, VS_PADDING_BOTTOM)
+                             ? v_style_resolve_length(&style->padding_bottom)
+                             : 0.0f;
+  node->padding.top = vs_has_prop(style, VS_PADDING_TOP)
+                          ? v_style_resolve_length(&style->padding_top)
+                          : 0.0f;
+
+  // note: ceil border, as fractional border pixels are not supported
+  node->border.left = vs_has_prop(style, VS_BORDER_LEFT)
+                          ? v_style_resolve_length_ceil(&style->border_left)
+                          : 0.0f;
+  node->border.right = vs_has_prop(style, VS_BORDER_RIGHT)
+                           ? v_style_resolve_length_ceil(&style->border_right)
+                           : 0.0f;
+  node->border.top = vs_has_prop(style, VS_BORDER_TOP)
+                         ? v_style_resolve_length_ceil(&style->border_top)
+                         : 0.0f;
+  node->border.bottom = vs_has_prop(style, VS_BORDER_BOTTOM)
+                            ? v_style_resolve_length_ceil(&style->border_bottom)
+                            : 0.0f;
 }
 
 // Pass 1: Width Sizing (Bottom-up)
@@ -6480,6 +6892,8 @@ static void v_layout_pass1_width(VNode* node) {
   }
 
   const VStyle* style = v_node_get_style_or_empty(node);
+
+  v_resolve_style(node, style);
 
   v_foreach_child(node, child) {
     if (v_node_is_visible(child)) {
@@ -6516,18 +6930,19 @@ static void v_layout_pass1_width(VNode* node) {
     if (dir == V_DIRECTION_ROW) {
       v_foreach_flow_child(node, child) {
         visible_children++;
+        const float child_margin_w = child->margin.left + child->margin.right;
         // For wrap, min_width is the widest single child (worst case: one per
         // row). pref_width is still the sum (preferred: all on one row).
         if (wrap == V_WRAP_WRAP) {
-          min_w = fmaxf(min_w, child->min_width);
+          min_w = fmaxf(min_w, child->min_width + child_margin_w);
         } else {
-          min_w += child->min_width;
+          min_w += child->min_width + child_margin_w;
         }
-        pref_w += child->pref_width;
+        pref_w += child->pref_width + child_margin_w;
       }
       if (visible_children > 1) {
         const float total_gap =
-            (float)((visible_children - 1) * (int)vs_get_gap(style));
+            (float)(visible_children - 1) * v_style_resolve_gap(style);
         if (wrap != V_WRAP_WRAP) {
           min_w += total_gap;
         }
@@ -6537,25 +6952,28 @@ static void v_layout_pass1_width(VNode* node) {
       if (wrap == V_WRAP_NONE) {
         // COLUMN: width is the maximum of children
         v_foreach_flow_child(node, child) {
-          min_w = fmaxf(min_w, child->min_width);
-          pref_w = fmaxf(pref_w, child->pref_width);
+          const float child_margin_w = child->margin.left + child->margin.right;
+          min_w = fmaxf(min_w, child->min_width + child_margin_w);
+          pref_w = fmaxf(pref_w, child->pref_width + child_margin_w);
         }
       } else {
         // COLUMN_WRAP: preferred width is the sum of column widths. Uses
         // children's pref_height from the previous layout to simulate column
         // breaks; converges after the first frame. If height is not FIXED the
         // column-break point is unknown, so falls back to single-column max.
-        const VSizing sh = vs_get_height(style);
-        const float extra_h = v_style_box_inset_height(style);
-        const float col_inner_h = (sh.tag == V_SIZING_FIXED)
-                                      ? fmaxf(0.0f, sh.min - extra_h)
-                                      : FLT_MAX;
-        const float gap = vs_get_gap(style);
+        const float extra_h = v_node_inset_height(node);
+        float fixed_width;
+        const float col_inner_h =
+            v_style_resolve_fixed_height(style, &fixed_width)
+                ? fmaxf(0.0f, fixed_width - extra_h)
+                : FLT_MAX;
+        const float gap = v_style_resolve_gap(style);
         float current_col_h = 0.0f;
         float current_col_pref_w = 0.0f;
 
         v_foreach_flow_child(node, child) {
-          min_w = fmaxf(min_w, child->min_width);
+          const float child_margin_w = child->margin.left + child->margin.right;
+          min_w = fmaxf(min_w, child->min_width + child_margin_w);
           if (current_col_h > 0.0f &&
               current_col_h + child->pref_height > col_inner_h) {
             pref_w += current_col_pref_w + gap;  // completed column + gap
@@ -6563,7 +6981,8 @@ static void v_layout_pass1_width(VNode* node) {
             current_col_pref_w = 0.0f;
           }
           current_col_h += child->pref_height + gap;
-          current_col_pref_w = fmaxf(current_col_pref_w, child->pref_width);
+          current_col_pref_w =
+              fmaxf(current_col_pref_w, child->pref_width + child_margin_w);
         }
         pref_w += current_col_pref_w;  // last column (no trailing gap)
       }
@@ -6572,7 +6991,7 @@ static void v_layout_pass1_width(VNode* node) {
 
   float ar = 0;
   if (vs_has_aspect_ratio(style)) {
-    ar = vs_get_aspect_ratio(style);
+    ar = v_style_resolve_aspect_ratio(style);
   } else if (node->tag == V_NODE_IMAGE) {
     // TODO: not sure about this. might need to support aspect-ratio = auto
     const VSize size = v__compute_image_pref_size(node);
@@ -6582,28 +7001,34 @@ static void v_layout_pass1_width(VNode* node) {
   }
 
   if (ar > 0) {
-    const VSizing sh = vs_get_height(style);
-    if (sh.tag == V_SIZING_FIXED) {
-      const float inner_h = sh.min - v_style_box_inset_height(style);
+    float fixed_height;
+    if (v_style_resolve_fixed_height(style, &fixed_height)) {
+      const float inner_h =
+          fmaxf(0.0f, fixed_height - v_node_inset_height(node));
       pref_w = inner_h * ar;
     }
   }
 
   // Add padding and borders
-  const float extra_w = v_style_box_inset_width(style);
+  const float extra_w = v_node_inset_width(node);
   min_w += extra_w;
   pref_w += extra_w;
 
   // Resolve against style
-  const VSizing sw = vs_get_width(style);
-  if (sw.tag == V_SIZING_FIXED) {
-    node->min_width = node->pref_width = sw.min;
+  float fixed_width;
+
+  if (v_style_resolve_fixed_width(style, &fixed_width)) {
+    node->min_width = node->pref_width = fixed_width;
   } else {
-    node->min_width = fmaxf(sw.min, min_w);
-    node->pref_width = fmaxf(sw.min, pref_w);
-    if (sw.max > 0) {
-      node->min_width = fminf(node->min_width, sw.max);
-      node->pref_width = fminf(node->pref_width, sw.max);
+    const float style_min_width = v_style_resolve_min_width(style);
+    const float style_max_width = v_style_resolve_max_width(style);
+
+    node->min_width = fmaxf(style_min_width, min_w);
+    node->pref_width = fmaxf(style_min_width, pref_w);
+
+    if (style_max_width > 0) {
+      node->min_width = fminf(node->min_width, style_max_width);
+      node->pref_width = fminf(node->pref_width, style_max_width);
     }
   }
 }
@@ -6644,17 +7069,18 @@ static void v_layout_pass2_width_dist(VNode* node,
   // 2: absolute children get their width resolved out-of-flow
   // 3: count visible, non-popover, non-absolute children; tally ROW grow/fixed
   const VStyle* style = v_node_get_style_or_empty(node);
-  const float inner_w = width - v_style_box_inset_width(style);
+  const float inner_w = width - v_node_inset_width(node);
   const VDirection dir = vs_get_direction(style);
-  const float gap = vs_get_gap(style);
+  const float gap = v_style_resolve_gap(style);
 
   v_foreach_child(node, child) {
     if (v_node_is_visible(child)) {
       const VStyle* child_style = v_node_get_style_or_empty(child);
+      const VSizeMode wtag = v_style_resolve_width_size_mode(child_style);
       float cw;
 
       if (child->popover_type != V_POPOVER_NONE) {
-        if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
+        if (wtag == V_SIZE_MODE_GROW) {
           cw = (vs_get_anchor_to(child_style) == V_ANCHOR_TO_ROOT) ? root_width
                                                                    : width;
         } else {
@@ -6662,13 +7088,12 @@ static void v_layout_pass2_width_dist(VNode* node,
         }
         v_layout_pass2_width_dist(child, cw, root_width);
       } else if (v_style__is_absolute(child_style)) {
-        const VSizingTag wtag = vs__get_width_tag(child_style);
-        if (wtag == V_SIZING_GROW) {
+        if (wtag == V_SIZE_MODE_GROW) {
           cw = inner_w;
-        } else if (wtag == V_SIZING_FIT && vs_has_left(child_style) &&
+        } else if (wtag == V_SIZE_MODE_FIT && vs_has_left(child_style) &&
                    vs_has_right(child_style)) {
-          cw = fmaxf(0.0f, inner_w - vs_get_left(child_style) -
-                               vs_get_right(child_style));
+          cw = fmaxf(0.0f, inner_w - v_style_resolve_left(child_style) -
+                               v_style_resolve_right(child_style));
         } else {
           cw = child->pref_width;
         }
@@ -6676,10 +7101,11 @@ static void v_layout_pass2_width_dist(VNode* node,
       } else {
         visible_children++;
         if (dir == V_DIRECTION_ROW) {
-          if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
+          if (wtag == V_SIZE_MODE_GROW) {
             grow_count++;
           } else {
-            fixed_w += child->pref_width;
+            fixed_w +=
+                child->pref_width + child->margin.left + child->margin.right;
           }
         }
       }
@@ -6708,11 +7134,12 @@ static void v_layout_pass2_width_dist(VNode* node,
       float new_clamped = 0;
       v_foreach_flow_child(node, child) {
         const VStyle* child_style = v_node_get_style_or_empty(child);
-        if (vs__get_width_tag(child_style) != V_SIZING_GROW) {
+        if (v_style_resolve_width_size_mode(child_style) != V_SIZE_MODE_GROW) {
           continue;
         }
-        if (child->min_width > per_grow) {
-          new_clamped += child->min_width;
+        const float child_margin_w = child->margin.left + child->margin.right;
+        if (child->min_width + child_margin_w > per_grow) {
+          new_clamped += child->min_width + child_margin_w;
         } else {
           new_unclamped++;
         }
@@ -6732,8 +7159,9 @@ static void v_layout_pass2_width_dist(VNode* node,
     v_foreach_flow_child(node, child) {
       const VStyle* child_style = v_node_get_style_or_empty(child);
       float cw;
-      if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
-        cw = fmaxf(child->min_width, grow_w);
+      if (v_style_resolve_width_size_mode(child_style) == V_SIZE_MODE_GROW) {
+        const float child_margin_w = child->margin.left + child->margin.right;
+        cw = fmaxf(child->min_width, grow_w - child_margin_w);
       } else {
         cw = child->pref_width;
       }
@@ -6744,8 +7172,8 @@ static void v_layout_pass2_width_dist(VNode* node,
     v_foreach_flow_child(node, child) {
       const VStyle* child_style = v_node_get_style_or_empty(child);
       float cw;
-      if (vs__get_width_tag(child_style) == V_SIZING_GROW) {
-        cw = inner_w;
+      if (v_style_resolve_width_size_mode(child_style) == V_SIZE_MODE_GROW) {
+        cw = fmaxf(0.0f, inner_w - child->margin.left - child->margin.right);
       } else {
         cw = child->pref_width;
       }
@@ -6781,8 +7209,8 @@ static void v_layout_pass3_height(VNode* node) {
     if (!v_string_is_empty(node->res_data.text) &&
         vs_has_font(style_for_text) && vs_has_font_size(style_for_text)) {
       // TODO: for now, use the snapped width to measure
-      const float inner_w = v_snap_to_grid_dpr(node->bounds.width) -
-                            v_style_box_inset_width(style_for_text);
+      const float inner_w =
+          v_snap_to_grid_dpr(node->bounds.width - v_node_inset_width(node));
 
       if (vs_get_text_wrap(style_for_text) == V_TEXT_WRAP_WRAP) {
         if (inner_w > 0) {
@@ -6797,7 +7225,7 @@ static void v_layout_pass3_height(VNode* node) {
               text_module, vs_get_font(style_for_text));
 
           text_layout = v_text_module_create_layout(
-              text_module, font_id, vs_get_font_size(style_for_text),
+              text_module, font_id, v_style_resolve_font_size(style_for_text),
               node->res_data.text, V_TEXT_WRAP_WRAP,
               vs_get_talign(style_for_text), inner_w);
 
@@ -6829,20 +7257,22 @@ static void v_layout_pass3_height(VNode* node) {
     if (dir == V_DIRECTION_ROW && wrap == V_WRAP_NONE) {
       v_foreach_flow_child(node, child) {
         visible_children++;
-        cross_pref = fmaxf(cross_pref, child->pref_height);
-        cross_min = fmaxf(cross_min, child->min_height);
+        const float child_margin_h = child->margin.top + child->margin.bottom;
+        cross_pref = fmaxf(cross_pref, child->pref_height + child_margin_h);
+        cross_min = fmaxf(cross_min, child->min_height + child_margin_h);
       }
       min_h = cross_min;
       pref_h = cross_pref;
     } else if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_NONE) {
       v_foreach_flow_child(node, child) {
         visible_children++;
-        main_min += child->min_height;
-        main_pref += child->pref_height;
+        const float child_margin_h = child->margin.top + child->margin.bottom;
+        main_min += child->min_height + child_margin_h;
+        main_pref += child->pref_height + child_margin_h;
       }
       if (visible_children > 1) {
         const float total_gap =
-            (float)((visible_children - 1) * (int)vs_get_gap(style));
+            (float)(visible_children - 1) * v_style_resolve_gap(style);
         main_min += total_gap;
         main_pref += total_gap;
       }
@@ -6853,30 +7283,34 @@ static void v_layout_pass3_height(VNode* node) {
       float current_row_w = 0;
       float current_row_h = 0;
       float total_h = 0;
-      const float inner_w = node->bounds.width - v_style_box_inset_width(style);
-      const float gap = vs_get_gap(style);
+      const float inner_w = node->bounds.width - v_node_inset_width(node);
+      const float gap = v_style_resolve_gap(style);
 
       v_foreach_flow_child(node, child) {
-        if (current_row_w > 0 &&
-            current_row_w + child->bounds.width > inner_w) {
+        const float child_total_w =
+            child->bounds.width + child->margin.left + child->margin.right;
+        const float child_total_h =
+            child->pref_height + child->margin.top + child->margin.bottom;
+        if (current_row_w > 0 && current_row_w + child_total_w > inner_w) {
           total_h += current_row_h + gap;
           current_row_w = 0;
           current_row_h = 0;
         }
-        current_row_w += child->bounds.width + gap;
-        current_row_h = fmaxf(current_row_h, child->pref_height);
+        current_row_w += child_total_w + gap;
+        current_row_h = fmaxf(current_row_h, child_total_h);
       }
       total_h += current_row_h;
       min_h = pref_h = total_h;
     } else if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_WRAP) {
-      const float extra_h = v_style_box_inset_height(style);
-      VSizing sh = vs_get_height(style);
+      const float extra_h = v_node_inset_height(node);
       // Column-wrap needs a height constraint to know when to break into a new
       // column. For FIXED height that constraint is known; for GROW/FIT it
       // isn't available until Pass 5, so fall back to a single column.
-      const float inner_h =
-          (sh.tag == V_SIZING_FIXED) ? fmaxf(0.0f, sh.min - extra_h) : FLT_MAX;
-      const float gap = vs_get_gap(style);
+      float fixed_height;
+      const float inner_h = v_style_resolve_fixed_height(style, &fixed_height)
+                                ? fmaxf(0.0f, fixed_height - extra_h)
+                                : FLT_MAX;
+      const float gap = v_style_resolve_gap(style);
       float current_col_h = 0;
 
       v_foreach_flow_child(node, child) {
@@ -6891,7 +7325,7 @@ static void v_layout_pass3_height(VNode* node) {
 
   float ar = 0;
   if (vs_has_aspect_ratio(style)) {
-    ar = vs_get_aspect_ratio(style);
+    ar = v_style_resolve_aspect_ratio(style);
   } else if (node->tag == V_NODE_IMAGE) {
     const VSize size = v__compute_image_pref_size(node);
     if (size.width > 0) {
@@ -6900,7 +7334,7 @@ static void v_layout_pass3_height(VNode* node) {
   }
 
   if (ar > 0) {
-    const float inner_w = node->bounds.width - v_style_box_inset_width(style);
+    const float inner_w = node->bounds.width - v_node_inset_width(node);
     pref_h = inner_w / ar;
   }
 
@@ -6914,20 +7348,24 @@ static void v_layout_pass3_height(VNode* node) {
   }
 
   // Add padding and borders
-  const float extra_h = v_style_box_inset_height(style);
+  const float extra_h = v_node_inset_height(node);
   min_h += extra_h;
   pref_h += extra_h;
 
   // Resolve against style
-  const VSizing sh = vs_get_height(style);
-  if (sh.tag == V_SIZING_FIXED) {
-    node->min_height = node->pref_height = sh.min;
+  float fixed_height;
+  if (v_style_resolve_fixed_height(style, &fixed_height)) {
+    node->min_height = node->pref_height = fixed_height;
   } else {
-    node->min_height = fmaxf(sh.min, min_h);
-    node->pref_height = fmaxf(sh.min, pref_h);
-    if (sh.max > 0) {
-      node->min_height = fminf(node->min_height, sh.max);
-      node->pref_height = fminf(node->pref_height, sh.max);
+    const float style_min_height = v_style_resolve_min_height(style);
+    const float style_max_height = v_style_resolve_max_height(style);
+
+    node->min_height = fmaxf(style_min_height, min_h);
+    node->pref_height = fmaxf(style_min_height, pref_h);
+
+    if (style_max_height > 0) {
+      node->min_height = fminf(node->min_height, style_max_height);
+      node->pref_height = fminf(node->pref_height, style_max_height);
     }
   }
 }
@@ -6943,8 +7381,9 @@ static void v__flush_row(VNode* start, VNode* end, float row_h) {
       continue;
     }
     const VStyle* cs = v_node_get_style_or_empty(c);
-    const float ch =
-        (vs__get_height_tag(cs) == V_SIZING_GROW) ? row_h : c->pref_height;
+    const float ch = (v_style_resolve_height_size_mode(cs) == V_SIZE_MODE_GROW)
+                         ? row_h
+                         : c->pref_height;
     v_layout_pass4_height_dist(c, ch);
   }
 }
@@ -6984,18 +7423,19 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
   // 3: count visible, non-popover, non-absolute children; tally COLUMN
   // grow/fixed
   const VStyle* style = v_node_get_style_or_empty(node);
-  const float inner_h = height - v_style_box_inset_height(style);
+  const float inner_h = height - v_node_inset_height(node);
   const VDirection dir = vs_get_direction(style);
   const VWrap wrap = vs_get_wrap(style);
-  const float gap = vs_get_gap(style);
+  const float gap = v_style_resolve_gap(style);
 
   v_foreach_child(node, child) {
     if (v_node_is_visible(child)) {
       float ch;
       const VStyle* child_style = v_node_get_style_or_empty(child);
+      const VSizeMode htag = v_style_resolve_height_size_mode(child_style);
 
       if (child->popover_type != V_POPOVER_NONE) {
-        if (vs__get_height_tag(child_style) == V_SIZING_GROW) {
+        if (htag == V_SIZE_MODE_GROW) {
           ch = (vs_get_anchor_to(child_style) == V_ANCHOR_TO_ROOT)
                    ? v_root()->bounds.height
                    : height;
@@ -7004,14 +7444,13 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
         }
         v_layout_pass4_height_dist(child, ch);
       } else if (v_style__is_absolute(child_style)) {
-        const VSizingTag htag = vs__get_height_tag(child_style);
         // TODO: has top && has bottom seems wrong
-        if (htag == V_SIZING_GROW) {
+        if (htag == V_SIZE_MODE_GROW) {
           ch = inner_h;
-        } else if (htag == V_SIZING_FIT && vs_has_top(child_style) &&
+        } else if (htag == V_SIZE_MODE_FIT && vs_has_top(child_style) &&
                    vs_has_bottom(child_style)) {
-          ch = fmaxf(0.0f, inner_h - vs_get_top(child_style) -
-                               vs_get_bottom(child_style));
+          ch = fmaxf(0.0f, inner_h - v_style_resolve_top(child_style) -
+                               v_style_resolve_bottom(child_style));
         } else {
           ch = child->pref_height;
         }
@@ -7019,11 +7458,11 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
       } else {
         visible_children++;
         if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_NONE) {
-          if (vs__get_height_tag(child_style) == V_SIZING_GROW &&
-              !vs_has_aspect_ratio(child_style)) {
+          if (htag == V_SIZE_MODE_GROW && !vs_has_aspect_ratio(child_style)) {
             grow_count++;
           } else {
-            fixed_h += child->pref_height;
+            fixed_h +=
+                child->pref_height + child->margin.top + child->margin.bottom;
           }
         }
       }
@@ -7049,14 +7488,15 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
       float new_clamped = 0;
       v_foreach_flow_child(node, child) {
         const VStyle* child_style = v_node_get_style_or_empty(child);
-        if (vs__get_height_tag(child_style) != V_SIZING_GROW) {
+        if (v_style_resolve_height_size_mode(child_style) != V_SIZE_MODE_GROW) {
           continue;
         }
         if (vs_has_aspect_ratio(child_style)) {
           continue;
         }
-        if (child->min_height > per_grow) {
-          new_clamped += child->min_height;
+        const float child_margin_h = child->margin.top + child->margin.bottom;
+        if (child->min_height + child_margin_h > per_grow) {
+          new_clamped += child->min_height + child_margin_h;
         } else {
           new_unclamped++;
         }
@@ -7076,10 +7516,11 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
     v_foreach_flow_child(node, child) {
       const VStyle* child_style = v_node_get_style_or_empty(child);
       float ch;
-      if (vs__get_height_tag(child_style) == V_SIZING_GROW) {
+      if (v_style_resolve_height_size_mode(child_style) == V_SIZE_MODE_GROW) {
+        const float child_margin_h = child->margin.top + child->margin.bottom;
         ch = vs_has_aspect_ratio(child_style)
                  ? child->pref_height
-                 : fmaxf(child->min_height, grow_h);
+                 : fmaxf(child->min_height, grow_h - child_margin_h);
       } else {
         ch = child->pref_height;
       }
@@ -7089,8 +7530,11 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
     v_foreach_flow_child(node, child) {
       const VStyle* child_style = v_node_get_style_or_empty(child);
       float ch;
-      if (vs__get_height_tag(child_style) == V_SIZING_GROW) {
-        ch = vs_has_aspect_ratio(child_style) ? child->pref_height : inner_h;
+      if (v_style_resolve_height_size_mode(child_style) == V_SIZE_MODE_GROW) {
+        const float child_margin_h = child->margin.top + child->margin.bottom;
+        ch = vs_has_aspect_ratio(child_style)
+                 ? child->pref_height
+                 : fmaxf(0.0f, inner_h - child_margin_h);
       } else {
         ch = child->pref_height;
       }
@@ -7102,13 +7546,15 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
     }
   } else {
     // ROW_WRAP: assign each child the height of the tallest child in its row.
-    const float inner_w = node->bounds.width - v_style_box_inset_width(style);
+    const float inner_w = node->bounds.width - v_node_inset_width(node);
     VNode* row_start = NULL;
     float current_row_w = 0;
     float current_row_h = 0;
 
     v_foreach_flow_child(node, child) {
-      if (current_row_w > 0 && current_row_w + child->bounds.width > inner_w) {
+      const float child_total_w =
+          child->bounds.width + child->margin.left + child->margin.right;
+      if (current_row_w > 0 && current_row_w + child_total_w > inner_w) {
         v__flush_row(row_start, child, current_row_h);
         row_start = NULL;
         current_row_w = 0;
@@ -7117,7 +7563,7 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
       if (!row_start) {
         row_start = child;
       }
-      current_row_w += child->bounds.width + gap;
+      current_row_w += child_total_w + gap;
       current_row_h = fmaxf(current_row_h, child->pref_height);
     }
 
@@ -7129,9 +7575,9 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
 static float v__get_relative_offset_x(const VStyle* child_style) {
   // can't use both left and right. resolve by favoring left.
   if (vs_has_left(child_style)) {
-    return vs_get_left(child_style);
+    return v_style_resolve_left(child_style);
   } else if (vs_has_right(child_style)) {
-    return -vs_get_right(child_style);
+    return -v_style_resolve_right(child_style);
   } else {
     return 0;
   }
@@ -7141,9 +7587,9 @@ static float v__get_relative_offset_x(const VStyle* child_style) {
 static float v__get_relative_offset_y(const VStyle* child_style) {
   // can't use both top and bottom. resolve by favoring top.
   if (vs_has_top(child_style)) {
-    return vs_get_top(child_style);
+    return v_style_resolve_top(child_style);
   } else if (vs_has_bottom(child_style)) {
-    return -vs_get_bottom(child_style);
+    return -v_style_resolve_bottom(child_style);
   } else {
     return 0;
   }
@@ -7168,32 +7614,50 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
   const VStyle* style = v_node_get_style_or_empty(node);
   const VDirection dir = vs_get_direction(style);
   const VWrap wrap = vs_get_wrap(style);
-  const float gap = vs_get_gap(style);
-  const float origin_x = v_style_box_inset_left(style);
-  const float origin_y = v_style_box_inset_top(style);
-  const float inner_w = node->bounds.width - v_style_box_inset_width(style);
-  const float inner_h = node->bounds.height - v_style_box_inset_height(style);
+  const float gap = v_style_resolve_gap(style);
+  const float origin_x = v_node_inset_left(node);
+  const float origin_y = v_node_inset_top(node);
+  const float inner_w = node->bounds.width - v_node_inset_width(node);
+  const float inner_h = node->bounds.height - v_node_inset_height(node);
 
   float cur_x = origin_x;
   float cur_y = origin_y;
 
   if (dir == V_DIRECTION_ROW && wrap == V_WRAP_NONE) {
     // Alignment along main axis (X): only flow children count.
+    // Auto margins on the main axis absorb free space before xalign is applied.
     float total_w = 0;
     int visible_count = 0;
+    int auto_margin_slots_x = 0;
     v_foreach_flow_child(node, child) {
+      const VStyle* child_style = v_node_get_style_or_empty(child);
+      if (v_style_margin_is_auto_left(child_style)) {
+        auto_margin_slots_x++;
+      } else {
+        total_w += child->margin.left;
+      }
+      if (v_style_margin_is_auto_right(child_style)) {
+        auto_margin_slots_x++;
+      } else {
+        total_w += child->margin.right;
+      }
       total_w += child->bounds.width;
       visible_count++;
     }
     if (visible_count > 1) {
       total_w += (visible_count - 1) * gap;
     }
+    const float free_w = fmaxf(0.0f, inner_w - total_w);
+    const float auto_w =
+        (auto_margin_slots_x > 0) ? free_w / auto_margin_slots_x : 0.0f;
 
-    const VAlignX ax = vs_get_xalign(style);
-    if (ax == V_ALIGN_X_CENTER) {
-      cur_x += fmaxf(0, (inner_w - total_w) / 2.0f);
-    } else if (ax == V_ALIGN_X_RIGHT) {
-      cur_x += fmaxf(0, inner_w - total_w);
+    if (auto_margin_slots_x == 0) {
+      const VAlignX ax = vs_get_xalign(style);
+      if (ax == V_ALIGN_X_CENTER) {
+        cur_x += fmaxf(0, (inner_w - total_w) / 2.0f);
+      } else if (ax == V_ALIGN_X_RIGHT) {
+        cur_x += fmaxf(0, inner_w - total_w);
+      }
     }
 
     v_foreach_child(node, child) {
@@ -7212,37 +7676,77 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
         continue;
       }
 
-      float child_x = cur_x;
-      float child_y = cur_y;
-      const VAlignY ay = vs_get_yalign(style);
-      if (ay == V_ALIGN_Y_CENTER) {
-        child_y += fmaxf(0, (inner_h - child->bounds.height) / 2.0f);
-      } else if (ay == V_ALIGN_Y_BOTTOM) {
-        child_y += fmaxf(0, inner_h - child->bounds.height);
+      // Main axis: resolve auto left/right margins.
+      const float eff_margin_left = v_style_margin_is_auto_left(child_style)
+                                        ? auto_w
+                                        : child->margin.left;
+      const float eff_margin_right = v_style_margin_is_auto_right(child_style)
+                                         ? auto_w
+                                         : child->margin.right;
+      // Cross axis: auto top/bottom margins override parent yalign per-child.
+      float child_y;
+      const bool auto_top_y = v_style_margin_is_auto_top(child_style);
+      const bool auto_bot_y = v_style_margin_is_auto_bottom(child_style);
+      if (auto_top_y || auto_bot_y) {
+        const float fixed_cross = child->bounds.height +
+                                  (auto_top_y ? 0.0f : child->margin.top) +
+                                  (auto_bot_y ? 0.0f : child->margin.bottom);
+        const float free_cross = fmaxf(0.0f, inner_h - fixed_cross);
+        child_y =
+            cur_y + (auto_top_y ? (auto_bot_y ? free_cross / 2.0f : free_cross)
+                                : child->margin.top);
+      } else {
+        child_y = cur_y + child->margin.top;
+        const VAlignY ay = vs_get_yalign(style);
+        if (ay == V_ALIGN_Y_CENTER) {
+          child_y += fmaxf(0, (inner_h - child->bounds.height) / 2.0f);
+        } else if (ay == V_ALIGN_Y_BOTTOM) {
+          child_y += fmaxf(0, inner_h - child->bounds.height);
+        }
       }
+      float child_x = cur_x + eff_margin_left;
       if (position == V_POSITION_RELATIVE) {
         child_x += v__get_relative_offset_x(child_style);
         child_y += v__get_relative_offset_y(child_style);
       }
       v_layout_pass5_pos(child, child_x, child_y);
-      cur_x += child->bounds.width + gap;
+      cur_x += eff_margin_left + child->bounds.width + eff_margin_right + gap;
     }
   } else if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_NONE) {
     // Alignment along main axis (Y): only flow children count.
+    // Auto margins on the main axis absorb free space before yalign is applied.
     float total_h = 0;
     int visible_count = 0;
+    int auto_margin_slots_y = 0;
     v_foreach_flow_child(node, child) {
+      const VStyle* child_style = v_node_get_style_or_empty(child);
+      if (v_style_margin_is_auto_top(child_style)) {
+        auto_margin_slots_y++;
+      } else {
+        total_h += child->margin.top;
+      }
+      if (v_style_margin_is_auto_bottom(child_style)) {
+        auto_margin_slots_y++;
+      } else {
+        total_h += child->margin.bottom;
+      }
       total_h += child->bounds.height;
       visible_count++;
     }
     if (visible_count > 1) {
       total_h += (visible_count - 1) * gap;
     }
-    const VAlignY ay = vs_get_yalign(style);
-    if (ay == V_ALIGN_Y_CENTER) {
-      cur_y += fmaxf(0, (inner_h - total_h) / 2.0f);
-    } else if (ay == V_ALIGN_Y_BOTTOM) {
-      cur_y += fmaxf(0, inner_h - total_h);
+    const float free_h = fmaxf(0.0f, inner_h - total_h);
+    const float auto_h =
+        (auto_margin_slots_y > 0) ? free_h / auto_margin_slots_y : 0.0f;
+
+    if (auto_margin_slots_y == 0) {
+      const VAlignY ay = vs_get_yalign(style);
+      if (ay == V_ALIGN_Y_CENTER) {
+        cur_y += fmaxf(0, (inner_h - total_h) / 2.0f);
+      } else if (ay == V_ALIGN_Y_BOTTOM) {
+        cur_y += fmaxf(0, inner_h - total_h);
+      }
     }
 
     v_foreach_child(node, child) {
@@ -7260,20 +7764,40 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
       if (position == V_POSITION_ABSOLUTE) {
         continue;
       }
-      float child_x = cur_x;
-      float child_y = cur_y;
-      const VAlignX ax = vs_get_xalign(style);
-      if (ax == V_ALIGN_X_CENTER) {
-        child_x += fmaxf(0, (inner_w - child->bounds.width) / 2.0f);
-      } else if (ax == V_ALIGN_X_RIGHT) {
-        child_x += fmaxf(0, inner_w - child->bounds.width);
+      // Main axis: resolve auto top/bottom margins.
+      const float eff_margin_top =
+          v_style_margin_is_auto_top(child_style) ? auto_h : child->margin.top;
+      const float eff_margin_bottom = v_style_margin_is_auto_bottom(child_style)
+                                          ? auto_h
+                                          : child->margin.bottom;
+      // Cross axis: auto left/right margins override parent xalign per-child.
+      float child_x;
+      const bool auto_left_x = v_style_margin_is_auto_left(child_style);
+      const bool auto_right_x = v_style_margin_is_auto_right(child_style);
+      if (auto_left_x || auto_right_x) {
+        const float fixed_cross = child->bounds.width +
+                                  (auto_left_x ? 0.0f : child->margin.left) +
+                                  (auto_right_x ? 0.0f : child->margin.right);
+        const float free_cross = fmaxf(0.0f, inner_w - fixed_cross);
+        child_x = cur_x + (auto_left_x
+                               ? (auto_right_x ? free_cross / 2.0f : free_cross)
+                               : child->margin.left);
+      } else {
+        child_x = cur_x + child->margin.left;
+        const VAlignX ax = vs_get_xalign(style);
+        if (ax == V_ALIGN_X_CENTER) {
+          child_x += fmaxf(0, (inner_w - child->bounds.width) / 2.0f);
+        } else if (ax == V_ALIGN_X_RIGHT) {
+          child_x += fmaxf(0, inner_w - child->bounds.width);
+        }
       }
+      float child_y = cur_y + eff_margin_top;
       if (position == V_POSITION_RELATIVE) {
         child_x += v__get_relative_offset_x(child_style);
         child_y += v__get_relative_offset_y(child_style);
       }
       v_layout_pass5_pos(child, child_x, child_y);
-      cur_y += child->bounds.height + gap;
+      cur_y += eff_margin_top + child->bounds.height + eff_margin_bottom + gap;
     }
   } else if (dir == V_DIRECTION_ROW && wrap == V_WRAP_WRAP) {
     float row_h = 0;
@@ -7294,21 +7818,24 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
         continue;
       }
 
-      if (cur_x > origin_x &&
-          cur_x + child->bounds.width > origin_x + inner_w) {
+      const float child_total_w =
+          child->margin.left + child->bounds.width + child->margin.right;
+      if (cur_x > origin_x && cur_x + child_total_w > origin_x + inner_w) {
         cur_y += row_h + gap;
         cur_x = origin_x;
         row_h = 0;
       }
-      float child_x = cur_x;
-      float child_y = cur_y;
+      float child_x = cur_x + child->margin.left;
+      float child_y = cur_y + child->margin.top;
       if (position == V_POSITION_RELATIVE) {
         child_x += v__get_relative_offset_x(child_style);
         child_y += v__get_relative_offset_y(child_style);
       }
       v_layout_pass5_pos(child, child_x, child_y);
-      cur_x += child->bounds.width + gap;
-      row_h = fmaxf(row_h, child->bounds.height);
+      cur_x +=
+          child->margin.left + child->bounds.width + child->margin.right + gap;
+      row_h = fmaxf(row_h, child->bounds.height + child->margin.top +
+                               child->margin.bottom);
     }
   } else if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_WRAP) {
     float col_w = 0;
@@ -7329,21 +7856,24 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
         continue;
       }
 
-      if (cur_y > origin_y &&
-          cur_y + child->bounds.height > origin_y + inner_h) {
+      const float child_total_h =
+          child->margin.top + child->bounds.height + child->margin.bottom;
+      if (cur_y > origin_y && cur_y + child_total_h > origin_y + inner_h) {
         cur_x += col_w + gap;
         cur_y = origin_y;
         col_w = 0;
       }
-      float child_x = cur_x;
-      float child_y = cur_y;
+      float child_x = cur_x + child->margin.left;
+      float child_y = cur_y + child->margin.top;
       if (position == V_POSITION_RELATIVE) {
         child_x += v__get_relative_offset_x(child_style);
         child_y += v__get_relative_offset_y(child_style);
       }
       v_layout_pass5_pos(child, child_x, child_y);
-      cur_y += child->bounds.height + gap;
-      col_w = fmaxf(col_w, child->bounds.width);
+      cur_y +=
+          child->margin.top + child->bounds.height + child->margin.bottom + gap;
+      col_w = fmaxf(col_w, child->bounds.width + child->margin.left +
+                               child->margin.right);
     }
   }
 
@@ -7358,20 +7888,21 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
     }
     float child_x, child_y;
     if (vs_has_left(child_style)) {
-      child_x = origin_x + vs_get_left(child_style);
-    } else if (vs_has_right(child_style)) {
       child_x =
-          origin_x + inner_w - vs_get_right(child_style) - child->bounds.width;
+          origin_x + v_style_resolve_left(child_style) + child->margin.left;
+    } else if (vs_has_right(child_style)) {
+      child_x = origin_x + inner_w - v_style_resolve_right(child_style) -
+                child->bounds.width - child->margin.right;
     } else {
-      child_x = origin_x;
+      child_x = origin_x + child->margin.left;
     }
     if (vs_has_top(child_style)) {
-      child_y = origin_y + vs_get_top(child_style);
+      child_y = origin_y + v_style_resolve_top(child_style) + child->margin.top;
     } else if (vs_has_bottom(child_style)) {
-      child_y = origin_y + inner_h - vs_get_bottom(child_style) -
-                child->bounds.height;
+      child_y = origin_y + inner_h - v_style_resolve_bottom(child_style) -
+                child->bounds.height - child->margin.bottom;
     } else {
-      child_y = origin_y;
+      child_y = origin_y + child->margin.top;
     }
     v_layout_pass5_pos(child, child_x, child_y);
   }
@@ -7460,9 +7991,9 @@ static void v_layout_pass6_popovers(VNode* node,
       // popover bounds.x/y are in absolute screen space coordinates
       // because they are drawn relative to root (0,0) in Pass B/C
       child->bounds.x = v_snap_to_grid_dpr(
-          ax - px + vs_get_attach_point_offset_x(child_style));
+          ax - px + v_style_resolve_attach_point_offset_x(child_style));
       child->bounds.y = v_snap_to_grid_dpr(
-          ay - py + vs_get_attach_point_offset_y(child_style));
+          ay - py + v_style_resolve_attach_point_offset_y(child_style));
     }
 
     v_layout_pass6_popovers(child, current_abs_x,
@@ -7480,9 +8011,9 @@ void v_node_layout(VNode* self, VNodeModule* mod, int width, int height) {
   VStyle* style = v_node_style(self);
 
   if (width != mod->root_width || height != mod->root_height) {
-    vs_set_width(style, V_FIXED(width_f));
+    vs_set_width(style, v_px(width_f));
     mod->root_width = width;
-    vs_set_height(style, V_FIXED(height_f));
+    vs_set_height(style, v_px(height_f));
     mod->root_height = height;
     v_node_mark_dirty(self);
   } else if (!v_node_has_flag(self, V_NODEFLAG_DIRTY)) {
@@ -7721,26 +8252,26 @@ VUID_PKG void v_node_on_mouse_button(VNode* self,
         v_node_get_scrollbar_rect(curr, abs_x, abs_y, &track, &thumb);
 
         if (v_point_in_rect(x, y, track.x, track.y, track.width,
-                            track.height)) {
-          if (v_point_in_rect(x, y, thumb.x, thumb.y, thumb.width,
-                              thumb.height)) {
-            mod->drag_node = curr;
-            mod->drag_start_y = y;
-            mod->drag_start_scroll_y = curr->scroll_y;
+                            track.height) &&
+            v_point_in_rect(x, y, thumb.x, thumb.y, thumb.width,
+                            thumb.height)) {
+          mod->drag_node = curr;
+          mod->drag_start_y = y;
+          mod->drag_start_scroll_y = curr->scroll_y;
+        } else {
+          /* TODO: bounds and inset may not be up to date here. layout after
+           * event? */
+          const float inner_h = curr->bounds.height - v_node_inset_height(curr);
+          if (y < thumb.y) {
+            curr->scroll_y -= inner_h;
           } else {
-            const float inner_h =
-                curr->bounds.height - v_style_box_inset_height(curr_style);
-            if (y < thumb.y) {
-              curr->scroll_y -= inner_h;
-            } else {
-              curr->scroll_y += inner_h;
-            }
-
-            const float max_scroll = v_node_get_max_scroll(curr);
-            curr->scroll_y = fmaxf(0.0f, fminf(curr->scroll_y, max_scroll));
+            curr->scroll_y += inner_h;
           }
-          return;
+
+          const float max_scroll = v_node_get_max_scroll(curr);
+          curr->scroll_y = fmaxf(0.0f, fminf(curr->scroll_y, max_scroll));
         }
+        return;
       }
     }
   } else {
@@ -7806,10 +8337,10 @@ VUID_PKG void v_node_on_mouse_move(VNode* self,
   const float y = input_event->u.mouse_move.y;
 
   if (drag_node) {
-    const VStyle* drag_style = v_node_get_style_or_empty(drag_node);
     const float dy = y - mod->drag_start_y;
+    /* TODO: bounds and inset may not be up to date here. layout after event? */
     const float inner_h =
-        drag_node->bounds.height - v_style_box_inset_height(drag_style);
+        drag_node->bounds.height - v_node_inset_height(drag_node);
     const float thumb_h =
         fmaxf(20.0f, (inner_h / drag_node->content_height) * inner_h);
     const float max_scroll = v_node_get_max_scroll(drag_node);
@@ -8012,11 +8543,10 @@ static VNode* v_node_hit_test_recursive(VNode* node,
   if (node_overflow == V_OVERFLOW_HIDDEN ||
       node_overflow == V_OVERFLOW_SCROLL) {
     const VRect inner_rect = {
-        // TODO: this should be bounds, rather than style
-        current_abs_x + v_style_box_inset_left(style),
-        current_abs_y + v_style_box_inset_top(style),
-        node->bounds.width - v_style_box_inset_width(style),
-        node->bounds.height - v_style_box_inset_height(style),
+        current_abs_x + v_node_inset_left(node),
+        current_abs_y + v_node_inset_top(node),
+        node->bounds.width - v_node_inset_width(node),
+        node->bounds.height - v_node_inset_height(node),
     };
     next_clip = v_rect_intersect(clip, inner_rect);
 
@@ -8255,32 +8785,27 @@ static void v_node_render(VCommandQueue* cmdq,
   }
 
   const float border_radius = v_constrain_border_radius_to_rect(
-      vs_get_border_radius(style), node->bounds.width, node->bounds.height);
+      v_style_resolve_border_radius(style), node->bounds.width,
+      node->bounds.height);
   const bool has_border_color = vs_has_border_color(style);
-  VInsets border_insets = {0};
   float one_border = 0;
 
   if (has_border_color) {
-    border_insets.top = (float)vs_get_border_top(style);
-    border_insets.right = (float)vs_get_border_right(style);
-    border_insets.bottom = (float)vs_get_border_bottom(style);
-    border_insets.left = (float)vs_get_border_left(style);
-
     if (border_radius > 0) {
       // rounded rect borders are drawn with uniform thickness. use the max of
       // all 4 border insets to get the value.
-      one_border = border_insets.top;
+      one_border = node->border.top;
 
-      if (border_insets.left > one_border) {
-        one_border = border_insets.left;
+      if (node->border.left > one_border) {
+        one_border = node->border.left;
       }
 
-      if (border_insets.bottom > one_border) {
-        one_border = border_insets.bottom;
+      if (node->border.bottom > one_border) {
+        one_border = node->border.bottom;
       }
 
-      if (border_insets.right > one_border) {
-        one_border = border_insets.right;
+      if (node->border.right > one_border) {
+        one_border = node->border.right;
       }
     }
   }
@@ -8299,12 +8824,11 @@ static void v_node_render(VCommandQueue* cmdq,
   if (has_border_color) {
     if (border_radius > 0) {
       if (one_border > 0) {
-        v_command_queue_cmd_stroke_rounded_rect(cmdq, &box, border_radius,
-                                                border_insets.top,
-                                                vs_get_border_color(style));
+        v_command_queue_cmd_stroke_rounded_rect(
+            cmdq, &box, border_radius, one_border, vs_get_border_color(style));
       }
     } else {
-      v_command_queue_cmd_stroke_rect(cmdq, &box, &border_insets,
+      v_command_queue_cmd_stroke_rect(cmdq, &box, &node->border,
                                       vs_get_border_color(style));
     }
   }
@@ -8313,8 +8837,8 @@ static void v_node_render(VCommandQueue* cmdq,
     case V_NODE_TEXT: {
       if (vs_has_color(style)) {
         const VTextLayout* layout = v_node_get_text_layout(node);
-        const float x = box.x + v_style_box_inset_left(style);
-        const float y = box.y + v_style_box_inset_top(style);
+        const float x = box.x + v_node_inset_left(node);
+        const float y = box.y + v_node_inset_top(node);
 
         v_text_layout_render(layout, cmdq, x, y, vs_get_color(style),
                              &v_ctx_text_module()->atlas);
@@ -8328,10 +8852,10 @@ static void v_node_render(VCommandQueue* cmdq,
 
       if (texture_id != 0) {
         const VRect image_rect = {
-            box.x + v_style_box_inset_left(style),
-            box.y + v_style_box_inset_top(style),
-            box.width - v_style_box_inset_width(style),
-            box.height - v_style_box_inset_height(style),
+            box.x + v_node_inset_left(node),
+            box.y + v_node_inset_top(node),
+            box.width - v_node_inset_width(node),
+            box.height - v_node_inset_height(node),
         };
 
         const VColor color =
@@ -8354,8 +8878,7 @@ static void v_node_render(VCommandQueue* cmdq,
   }
 
   if (vs_get_overflow(style) == V_OVERFLOW_SCROLL &&
-      node->content_height >
-          node->bounds.height - v_style_box_inset_height(style)) {
+      node->content_height > node->bounds.height - v_node_inset_height(node)) {
     VRect track;
     VRect thumb;
 
@@ -8370,7 +8893,8 @@ static void v_node_render(VCommandQueue* cmdq,
     // TODO: hovered thumb check
 
     const float scrollbar_border_radius = v_constrain_border_radius_to_rect(
-        vs_get_scrollbar_border_radius(style), thumb.width, thumb.height);
+        v_style_resolve_scrollbar_border_radius(style), thumb.width,
+        thumb.height);
 
     v_command_queue_cmd_fill_rounded_rect(cmdq, &thumb, scrollbar_border_radius,
                                           scrollbar_thumb, false);
@@ -9118,9 +9642,7 @@ VUID_PKG void v_node_set_attached(VNode* node, bool attached) {
 }
 
 VUID_PKG float v_node_get_max_scroll(const VNode* node) {
-  const VStyle* style = v_node_get_style_or_empty(node);
-  // TODO: this is wrong.. use bounds inset
-  const float inner_h = node->bounds.height - v_style_box_inset_height(style);
+  const float inner_h = node->bounds.height - v_node_inset_height(node);
   return fmaxf(0.0f, node->content_height - inner_h);
 }
 
@@ -9130,17 +9652,20 @@ VUID_PKG void v_node_get_scrollbar_rect(VNode* node,
                                         VRect* track,
                                         VRect* thumb) {
   const VStyle* style = v_node_get_style_or_empty(node);
-  const float scrollbar_width = vs_get_scrollbar_width(style);
-  // TODO: this is wrong.. use bounds inset
-  const float inner_h = node->bounds.height - v_style_box_inset_height(style);
+  const float scrollbar_width = v_style_resolve_scrollbar_width(style);
+  const float inner_h = node->bounds.height - v_node_inset_height(node);
   const float max_scroll = v_node_get_max_scroll(node);
 
-  track->x = abs_x + node->bounds.width -
-             (scrollbar_width + vs_get_border_right(style));
-  track->y = abs_y + vs_get_padding_top(style) + vs_get_border_top(style);
+  const float content_x = abs_x + v_node_inset_left(node);
+  const float content_y = abs_y + v_node_inset_top(node);
+  const float content_w =
+      node->bounds.width - node->border.left - node->border.right;
+  const float content_right = content_x + content_w;
 
   track->width = scrollbar_width;
   track->height = inner_h;
+  track->x = content_right - scrollbar_width;
+  track->y = content_y;
 
   if (node->content_height <= inner_h) {
     *thumb = (VRect){0, 0, 0, 0};
