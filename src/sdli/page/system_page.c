@@ -36,29 +36,34 @@ VNode* SystemPage(void)
   {
     NN_BOX({.id = PAGEID_SYSTEM, .sclass = CLS_PAGE})
     {
-      NN_TEXT({.text = STR(SID_SYSTEM), .sclass = CLS_PAGE_H1});
-      NN_BOX({.sclass = CLS_LIST})
+      NN_BOX({.sclass = CLS_SCROLLABLE})
       {
-        NN_CALL(KeyValueListItem, STR(SID_VERSION), NID_SDL_VERSION);
-        NN_CALL(KeyValueListItemLast, STR(SID_REVISION), NID_SDL_REVISION);
-      }
+        NN_TEXT({.text = STR(SID_SYSTEM), .sclass = CLS_PAGE_H1});
 
-      NN_TEXT({.text = STR(SID_CAP_OS), .sclass = CLS_PAGE_H2});
-      NN_BOX({.sclass = CLS_LIST})
-      {
-        NN_CALL(KeyValueListItem, STR(SID_PLATFORM), NID_PLATFORM);
-        NN_CALL(KeyValueListItemLast, STR(SID_THEME), NID_THEME);
-      }
+        NN_TEXT({.text = STR(SID_CAP_SDL), .sclass = CLS_PAGE_H2});
+        NN_BOX({.sclass = CLS_LIST})
+        {
+          NN_CALL(KeyValueListItem, STR(SID_VERSION), NID_SDL_VERSION);
+          NN_CALL(KeyValueListItemLast, STR(SID_REVISION), NID_SDL_REVISION);
+        }
 
-      NN_TEXT({.text = STR(SID_CAP_HARDWARE), .sclass = CLS_PAGE_H2});
-      NN_BOX({.sclass = CLS_LIST})
-      {
-        NN_CALL(KeyValueListItem, STR(SID_POWER_STATE), NID_POWER_STATE);
-        NN_CALL(KeyValueListItem, STR(SID_BATTERY), NID_BATTERY);
-        NN_CALL(KeyValueListItem, STR(SID_CPU_CORES), NID_CPU_CORES);
-        NN_CALL(KeyValueListItem, STR(SID_CACHE_LINE_SIZE),
-                NID_CACHE_LINE_SIZE);
-        NN_CALL(KeyValueListItemLast, STR(SID_SYSTEM_RAM), NID_SYSTEM_RAM);
+        NN_TEXT({.text = STR(SID_CAP_OS), .sclass = CLS_PAGE_H2});
+        NN_BOX({.sclass = CLS_LIST})
+        {
+          NN_CALL(KeyValueListItem, STR(SID_PLATFORM), NID_PLATFORM);
+          NN_CALL(KeyValueListItemLast, STR(SID_THEME), NID_THEME);
+        }
+
+        NN_TEXT({.text = STR(SID_CAP_HARDWARE), .sclass = CLS_PAGE_H2});
+        NN_BOX({.sclass = CLS_LIST})
+        {
+          NN_CALL(KeyValueListItem, STR(SID_POWER_STATE), NID_POWER_STATE);
+          NN_CALL(KeyValueListItem, STR(SID_BATTERY), NID_BATTERY);
+          NN_CALL(KeyValueListItem, STR(SID_CPU_CORES), NID_CPU_CORES);
+          NN_CALL(KeyValueListItem, STR(SID_CACHE_LINE_SIZE),
+                  NID_CACHE_LINE_SIZE);
+          NN_CALL(KeyValueListItemLast, STR(SID_SYSTEM_RAM), NID_SYSTEM_RAM);
+        }
       }
     }
   }
