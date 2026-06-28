@@ -129,6 +129,7 @@ void LoadStyleSheet(void)
     vs_set_background(S, THEME_BUTTON_COLOR);
     vs_set_direction(S, V_DIRECTION_COLUMN);
     vs_set_attach_point_offset_y(S, THEME_SP_SM);
+    vs_set_position_fallback(S, V_POSITION_FALLBACK_FLIP);
     vs_set_anchor_to(S, V_ANCHOR_TO_PARENT);
     vs_set_anchor_attach_point_x(S, V_ATTACH_POINT_X_RIGHT);
     vs_set_anchor_attach_point_y(S, V_ATTACH_POINT_Y_BOTTOM);
