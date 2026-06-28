@@ -14,7 +14,7 @@ static void ButtonImpl(NN_CALLABLE,
                        const char* button_class,
                        VNodeEventListener on_click,
                        VNodeEventListener on_mouse_move);
-static void OnMouseMoveImpl(VNode* node,
+static void OnMouseOverImpl(VNode* node,
                             VNodeEvent* event,
                             const char* button_class,
                             const char* button_hover_class);
@@ -24,11 +24,15 @@ static void OnMouseMoveImpl(VNode* node,
 //
 
 OnMouseOverInline(Button, {
-  OnMouseMoveImpl(node, event, CLS_BUTTON, CLS_BUTTON_HOVER);
+  OnMouseOverImpl(node, event, CLS_BUTTON, CLS_BUTTON_HOVER);
 })
 
 OnMouseOverInline(ButtonStretch, {
-  OnMouseMoveImpl(node, event, CLS_BUTTON_STRETCH, CLS_BUTTON_STRETCH_HOVER);
+  OnMouseOverImpl(node, event, CLS_BUTTON_STRETCH, CLS_BUTTON_STRETCH_HOVER);
+})
+
+OnMouseOverInline(MenuButton, {
+  OnMouseOverImpl(node, event, CLS_MENU_BUTTON, CLS_MENU_BUTTON_HOVER);
 })
 
 //
@@ -40,8 +44,8 @@ void Button(NN_CALLABLE,
             void* data,
             VNodeEventListener on_click)
 {
-  ButtonImpl(NN_STATE(), NULL, label, data, CLS_BUTTON, on_click,
-             &Button_OnMouseOver);
+  NN_CALL(ButtonImpl, NULL, label, data, CLS_BUTTON, on_click,
+          &Button_OnMouseOver);
 }
 
 void ButtonStretch(NN_CALLABLE,
@@ -49,8 +53,25 @@ void ButtonStretch(NN_CALLABLE,
                    void* data,
                    VNodeEventListener on_click)
 {
-  ButtonImpl(NN_STATE(), NULL, label, data, CLS_BUTTON_STRETCH, on_click,
-             &ButtonStretch_OnMouseOver);
+  NN_CALL(ButtonImpl, NULL, label, data, CLS_BUTTON_STRETCH, on_click,
+          &ButtonStretch_OnMouseOver);
+}
+
+void MenuButton(NN_CALLABLE,
+                const char* label,
+                void* data,
+                VNodeEventListener on_click)
+{
+  NN_BOX({
+      .sclass = CLS_MENU_BUTTON,
+      .data = data,
+      .on_mouse_enter = &MenuButton_OnMouseOver,
+      .on_mouse_leave = &MenuButton_OnMouseOver,
+      .on_click = on_click,
+  })
+  {
+    NN_TEXT({.text = label, .sclass = CLS_BUTTON_TEXT});
+  }
 }
 
 void Button_SetLabel(VNode* node, const char* text)
@@ -83,7 +104,7 @@ static void ButtonImpl(NN_CALLABLE,
   }
 }
 
-static void OnMouseMoveImpl(VNode* node,
+static void OnMouseOverImpl(VNode* node,
                             VNodeEvent* event,
                             const char* button_class,
                             const char* button_hover_class)

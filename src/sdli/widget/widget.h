@@ -103,6 +103,10 @@ void ButtonStretch(NN_CALLABLE,
                    const char* label,
                    void* data,
                    VNodeEventListener on_click);
+void MenuButton(NN_CALLABLE,
+                const char* label,
+                void* data,
+                VNodeEventListener on_click);
 void Button_SetLabel(VNode* node, const char* text);
 
 /*

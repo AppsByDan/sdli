@@ -124,6 +124,8 @@ void LoadStyleSheet(void)
   vss_with(S, CLS_MENU)
   {
     vs_set_border_radius(S, THEME_BUTTON_CORNER_RADIUS);
+    vs_set_border_all(S, THEME_BORDER);
+    vs_set_border_color(S, THEME_LIST_BORDER_COLOR);
     vs_set_background(S, THEME_BUTTON_COLOR);
     vs_set_direction(S, V_DIRECTION_COLUMN);
     vs_set_attach_point_offset_y(S, THEME_SP_SM);

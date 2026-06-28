@@ -34,10 +34,10 @@ static ControllerId GetControllerId(VNode* node);
 // private node event handlers
 //
 
-// clang-format off
 OnClickInline(Info, {
   State_SelectController(GetControllerId(node));
   PageNavigator_Goto(PAGEID_CONTROLLER_INFO);
+  v_node_hide_popover(v_node_parent(node));
 })
 
 OnClickInline(Events, {
@@ -52,27 +52,33 @@ OnClickInline(Configure, {
 
 OnClickInline(Rumble, {
   Controller_Rumble(GetControllerId(node));
+  v_node_hide_popover(v_node_parent(node));
 })
 
 OnClickInline(RemoveMapping, {
   Controller_RemoveMapping(GetControllerId(node));
+  v_node_hide_popover(v_node_parent(node));
 })
 
 OnClickInline(CopyMapping, {
   SystemModel_CopyToClipboard(
       Controller_GetMappingString(GetControllerId(node)));
+  v_node_hide_popover(v_node_parent(node));
 })
 
 OnClickInline(ReloadMappings, {
   ReloadMappingsOverlay();
+  v_node_hide_popover(v_node_parent(node));
 })
 
 OnClickInline(LoadMappings, {
   LoadMappingsOverlay();
+  v_node_hide_popover(v_node_parent(node));
 })
 
 OnClickInline(ExportMappings, {
   ExportMappingsOverlay();
+  v_node_hide_popover(v_node_parent(node));
 })
 
 OnClickInline(ReloadMappingsOverlayOk, {
@@ -102,7 +108,12 @@ OnClickInline(ExportMappingsToFile, {
   Overlay_Dismiss();
   WaitOverlay("Export Mappings");
 })
-// clang-format on
+
+OnClickInline(OpenMenu, {
+  VNode* menu = v_node_last_child(v_node_parent(node));
+  v_node_show_popover(menu);
+  v_node_event_stop_propagation(event);
+})
 
 //
 // public function implementation
@@ -114,7 +125,22 @@ VNode* ControllerListPage(void)
   {
     NN_BOX({.id = PAGEID_CONTROLLER_LIST, .sclass = CLS_PAGE})
     {
-      NN_TEXT({.text = STR(SID_CONTROLLERS), .sclass = CLS_PAGE_H1});
+      NN_BOX({0})
+      {
+        NN_TEXT({.text = STR(SID_CONTROLLERS), .sclass = CLS_PAGE_H1});
+        NN_BOX({0})
+        {
+          NN_CALL(Button, "+", NULL, &OpenMenu_OnClick);
+          NN_BOX({.sclass = CLS_MENU, .popover = V_POPOVER_AUTO})
+          {
+            NN_CALL(MenuButton, "Reload Mappings", NULL,
+                    &ReloadMappings_OnClick);
+            NN_CALL(MenuButton, "Load Mappings", NULL, &LoadMappings_OnClick);
+            NN_CALL(MenuButton, "Export Mappings", NULL,
+                    &ExportMappings_OnClick);
+          }
+        }
+      }
       NN_BOX({
           .id = NID_CONTROLLER_LIST,
           .sclass = CLS_SCROLLABLE_LIST,
@@ -155,17 +181,29 @@ static void ControllerListItem(NN_CALLABLE, ControllerId id)
     void* button_data = (void*)(uintptr_t)id;
 
     // TODO: localize
-    NN_CALL(Button, "Events", button_data, &Events_OnClick);
     NN_CALL(Button, "Configure", button_data, &Configure_OnClick);
-    NN_CALL(Button, "I", button_data, &Info_OnClick);
+    NN_CALL(Button, "Events", button_data, &Events_OnClick);
 
-    if (Controller_HasRumble(id)) {
-      NN_CALL(Button, "R", button_data, &Rumble_OnClick);
-    }
+    NN_BOX({0})
+    {
+      NN_CALL(Button, "+", button_data, &OpenMenu_OnClick);
+      // TODO: what if controller is disconnected or controller changes while
+      // this is up?
+      NN_BOX({.sclass = CLS_MENU, .popover = V_POPOVER_AUTO})
+      {
+        NN_CALL(MenuButton, "Info", button_data, &Info_OnClick);
 
-    if (Controller_HasMapping(id)) {
-      NN_CALL(Button, "RM", button_data, &RemoveMapping_OnClick);
-      NN_CALL(Button, "CM", button_data, &CopyMapping_OnClick);
+        if (Controller_HasRumble(id)) {
+          NN_CALL(MenuButton, "Rumble", button_data, &Rumble_OnClick);
+        }
+
+        if (Controller_HasMapping(id)) {
+          NN_CALL(MenuButton, "Remove Mapping", button_data,
+                  &RemoveMapping_OnClick);
+          NN_CALL(MenuButton, "Copy Mapping", button_data,
+                  &CopyMapping_OnClick);
+        }
+      }
     }
   }
 }
@@ -184,17 +222,7 @@ static void OnNavigatorEvent(NavigatorEvent* event)
 
   NN_BUILD_APPEND(list)
   {
-    NN_BOX({.sclass = CLS_BUTTON_ROW})
-    {
-      // TODO: need at least 1 connected controller with mapping for export
-      // TODO: reload and load dont make sense with no controllers connected
-      NN_CALL(Button, "Reload mappings", NULL, &ReloadMappings_OnClick);
-      NN_CALL(Button, "Load mappings", NULL, &LoadMappings_OnClick);
-      NN_CALL(Button, "Export mappings", NULL, &ExportMappings_OnClick);
-    }
-
     // TODO: show message for no controllers
-    // TODO: the button row is not final design
 
     int controller_count = 0;
     ControllerId* controller_ids =
