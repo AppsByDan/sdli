@@ -147,8 +147,12 @@ typedef enum VAlignY {
 
 typedef enum VAnchorTo {
   V_ANCHOR_TO_PARENT,
-  V_ANCHOR_TO_ROOT,
 } VAnchorTo;
+
+typedef enum VPositionFallback {
+  V_POSITION_FALLBACK_NONE,
+  V_POSITION_FALLBACK_FLIP,
+} VPositionFallback;
 
 typedef enum VAttachPointX {
   V_ATTACH_POINT_X_LEFT,
@@ -895,6 +899,11 @@ VUID_API VAnchorTo     vs_get_anchor_to(const VStyle* style);
 VUID_API void          vs_unset_anchor_to(VStyle* style);
 VUID_API bool          vs_has_anchor_to(const VStyle* style);
 
+VUID_API void          vs_set_position_fallback(VStyle* style, VPositionFallback value);
+VUID_API VPositionFallback vs_get_position_fallback(const VStyle* style);
+VUID_API void          vs_unset_position_fallback(VStyle* style);
+VUID_API bool          vs_has_position_fallback(const VStyle* style);
+
 VUID_API void          vs_set_anchor_attach_point_x(VStyle* style, VAttachPointX value);
 VUID_API VAttachPointX vs_get_anchor_attach_point_x(const VStyle* style);
 VUID_API void          vs_unset_anchor_attach_point_x(VStyle* style);
@@ -967,6 +976,13 @@ static inline void vs_set_border(VStyle* style, VStyleValue t, VStyleValue r, VS
   vs_set_border_right(style, r);
   vs_set_border_bottom(style, b);
   vs_set_border_left(style, l);
+}
+
+static inline void vs_set_margin(VStyle* style, VStyleValue t, VStyleValue r, VStyleValue b, VStyleValue l) {
+  vs_set_margin_top(style, t);
+  vs_set_margin_right(style, r);
+  vs_set_margin_bottom(style, b);
+  vs_set_margin_left(style, l);
 }
 
 // ============================================================

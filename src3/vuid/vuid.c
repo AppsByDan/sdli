@@ -791,6 +791,17 @@ VUID_PKG void         v_ctx_request_render(void);
 /* Default device pixel ratio. */
 #define VUID_DEFAULT_DPR (1.0f)
 
+/* Represents a point with x and y coordinates. */
+typedef struct VPoint {
+  float x;
+  float y;
+} VPoint;
+
+/* Create a point at (0,0). */
+static inline VPoint v_point_init(void) {
+  return (VPoint){0, 0};
+}
+
 /* Checks if two rectangles intersect and returns the intersection rectangle. */
 static inline VRect v_rect_intersect(VRect a, VRect b) {
   const float x1 = fmaxf(a.x, b.x);
@@ -804,6 +815,28 @@ static inline VRect v_rect_intersect(VRect a, VRect b) {
     y2 = y1;
   }
   return (VRect){x1, y1, x2 - x1, y2 - y1};
+}
+
+/* Copy a rectangle at a new position. */
+static inline VRect v_rect_move_to(const VRect* rect, VPoint to) {
+  return (VRect){to.x, to.y, rect->width, rect->height};
+}
+
+/* Checks if one rectangle fully contains another rectangle. */
+static inline bool v_rect_contains(VRect outer, VRect inner) {
+  return inner.x >= outer.x && inner.y >= outer.y &&
+         inner.x + inner.width <= outer.x + outer.width &&
+         inner.y + inner.height <= outer.y + outer.height;
+}
+
+/* Checks if one rectangle fully contains another rectangle along the X axis. */
+static inline bool v_rect_contains_xaxis(VRect outer, VRect inner) {
+  return inner.x >= outer.x && inner.x + inner.width <= outer.x + outer.width;
+}
+
+/* Checks if one rectangle fully contains another rectangle along the Y axis. */
+static inline bool v_rect_contains_yaxis(VRect outer, VRect inner) {
+  return inner.y >= outer.y && inner.y + inner.height <= outer.y + outer.height;
 }
 
 /* Checks if a point is inside a rectangle. */
@@ -1573,6 +1606,7 @@ typedef enum VStyleProperty {
   VS_SCROLLBAR_THUMB,
   VS_SCROLLBAR_THUMB_HOVER,
   VS_ANCHOR_TO,
+  VS_POSITION_FALLBACK,
   VS_ANCHOR_ATTACH_POINT_X,
   VS_ANCHOR_ATTACH_POINT_Y,
   VS_ATTACH_POINT_X,
@@ -1710,8 +1744,15 @@ typedef enum VNodeEventFlag {
   V_NODE_EVENT_FLAG_CANCELLED = 1 << 0,
 } VNodeEventFlag;
 
+typedef enum VNodePosition {
+  V_NODE_POSITION_ZERO,
+  V_NODE_POSITION_RELATIVE,
+  V_NODE_POSITION_ABSOLUTE,
+} VNodePosition;
+
 // clang-format off
-VUID_PKG void          v_node_get_abs_pos(const VNode* node, float* x, float* y);
+VUID_PKG VPoint        v_node_get_abs_pos(const VNode* node);
+VUID_PKG VRect         v_node_get_bounds_at(const VNode* node, VNodePosition xy);
 VUID_PKG void          v_node_set_attached(VNode* node, bool attached);
 VUID_PKG float         v_node_get_max_scroll(const VNode* node);
 VUID_PKG void          v_node_get_scrollbar_rect(VNode* node, float abs_x, float abs_y, VRect* track, VRect* thumb);
@@ -1811,6 +1852,7 @@ typedef enum VStylePropertyTag {
   VSTAG_ENUM_OVERFLOW,
   VSTAG_ENUM_TEXT_WRAP,
   VSTAG_ENUM_ANCHOR_TO,
+  VSTAG_ENUM_POSITION_FALLBACK,
   VSTAG_ENUM_ATTACH_POINT_X,
   VSTAG_ENUM_ATTACH_POINT_Y,
   VSTAG_ENUM_POSITION,
@@ -1831,6 +1873,7 @@ typedef struct VStylePropertyMeta {
     VTextWrap text_wrap;
     VOverflow overflow;
     VAnchorTo anchor_to;
+    VPositionFallback position_fallback;
     VAttachPointX attach_point_x;
     VAttachPointY attach_point_y;
     VPosition position;
@@ -1847,6 +1890,7 @@ typedef struct VStylePropertyMeta {
     void (*yalign)(VStyle*, VAlignY);
     void (*overflow)(VStyle*, VOverflow);
     void (*anchor_to)(VStyle*, VAnchorTo);
+    void (*position_fallback)(VStyle*, VPositionFallback);
     void (*attach_point_x)(VStyle*, VAttachPointX);
     void (*attach_point_y)(VStyle*, VAttachPointY);
     void (*position)(VStyle*, VPosition);
@@ -1864,6 +1908,7 @@ typedef struct VStylePropertyMeta {
     VAlignY (*yalign)(const VStyle*);
     VOverflow (*overflow)(const VStyle*);
     VAnchorTo (*anchor_to)(const VStyle*);
+    VPositionFallback (*position_fallback)(const VStyle*);
     VAttachPointX (*attach_point_x)(const VStyle*);
     VAttachPointY (*attach_point_y)(const VStyle*);
     VPosition (*position)(const VStyle*);
@@ -1885,8 +1930,7 @@ typedef struct VStylePropertyMeta {
   bool affects_render;
 } VStylePropertyMeta;
 
-VUID_PKG const VStylePropertyMeta* v_style_get_prop_meta(
-    VStyleProperty property);
+extern const VStylePropertyMeta g_style_props[];
 
 #endif  // VUID_NODE_STYLE_PROPERTY_H
 
@@ -1902,6 +1946,11 @@ typedef enum VSizeMode {
 } VSizeMode;
 
 struct VStyle {
+  VNode* owner;
+  uint64_t is_set;
+
+  // TODO: prop fields can be packed, at least. not sure if a hmap is needed.
+
   const char* font;
   VStyleValue width;
   VStyleValue min_width;
@@ -1945,6 +1994,7 @@ struct VStyle {
   VAlignX talign;
   VTextWrap text_wrap;
   VAnchorTo anchor_to;
+  VPositionFallback position_fallback;
   VAttachPointX anchor_attach_point_x;
   VAttachPointY anchor_attach_point_y;
   VAttachPointX attach_point_x;
@@ -1954,9 +2004,6 @@ struct VStyle {
   VVisibility visibility;
 
   uint32_t ref_count;
-
-  VNode* owner;
-  uint64_t is_set;
 };
 
 VUID_PKG VStyle* v_style_new(VNode* owner);
@@ -2150,6 +2197,36 @@ static inline float v_style_resolve_attach_point_offset_y(const VStyle* style) {
 
 #endif  // VUID_NODE_STYLE_H
 
+#ifndef VUID_NODE_POPOVER_H
+#define VUID_NODE_POPOVER_H
+
+
+/*
+ * Set popover absolute position relative to its anchor, as described by the
+ * popover's style. Positioning, relative to the anchor, can be flipped on the x
+ * and y axes.
+ */
+VUID_PKG void v_popover_set_position(VNode* popover,
+                                     const VNode* anchor,
+                                     bool flip_x,
+                                     bool flip_y);
+
+/*
+ * Checks to see if the popover overflows the viewport on the xaxis and yaxis.
+ * If overflow occurs, the popover will be repositioned by attempting to flip
+ * the popover across an axis, relative to its anchor. If repositioning still
+ * overflows the viewport, the original position is restored.
+ *
+ * flip is the only supported fallback. This is sufficient for now, but popovers
+ * will need a more robust fallback mechanism, similar to css. And, a more
+ * robust way to describe the anchor and attach points, similar to css.
+ */
+VUID_PKG void v_popover_position_fallback_try(VNode* popover,
+                                              const VNode* anchor,
+                                              VRect viewport);
+
+#endif  // VUID_NODE_POPOVER_H
+
 #ifndef VUID_NODE_NODE_MODULE_H
 #define VUID_NODE_NODE_MODULE_H
 
@@ -2224,7 +2301,7 @@ static inline VStyleClassHashMap* v_node_module_get_style_sheet(void) {
 #define VUID_NODE_NODE_LAYOUT_H
 
 
-void v_node_layout(VNode* self, VNodeModule* mod, int width, int height);
+VUID_PKG void v_node_layout(VNodeModule* mod, int width, int height);
 
 #endif  // VUID_NODE_NODE_LAYOUT_H
 
@@ -2808,8 +2885,7 @@ VUID_API void v_quit(void) {
 
 VUID_API void v_update(int width, int height) {
   V_CHECK_CONTEXT();
-  v_node_layout(g_context.node_module.root, &g_context.node_module, width,
-                height);
+  v_node_layout(&g_context.node_module, width, height);
 }
 
 VUID_API void v_render(void) {
@@ -6033,7 +6109,7 @@ static inline void v_clamp_length_gte0(float* value) {
   }
 }
 
-static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
+const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
     // clang-format off
     [VS_WIDTH] = {
       .tag = VSTAG_STYLE_VALUE,
@@ -6330,6 +6406,13 @@ static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
       .get_fn.anchor_to = &vs_get_anchor_to,
       .affects_layout = true,
     },
+    [VS_POSITION_FALLBACK] = {
+      .tag = VSTAG_ENUM_POSITION_FALLBACK,
+      .default_value.position_fallback = V_POSITION_FALLBACK_NONE,
+      .set_fn.position_fallback = &vs_set_position_fallback,
+      .get_fn.position_fallback = &vs_get_position_fallback,
+      .affects_layout = true,
+    },
     [VS_ANCHOR_ATTACH_POINT_X] = {
       .tag = VSTAG_ENUM_ATTACH_POINT_X,
       .default_value.attach_point_x = V_ATTACH_POINT_X_LEFT,
@@ -6423,12 +6506,6 @@ static const VStylePropertyMeta g_style_props[VS__STYLE_PROPERTY_COUNT] = {
     },
     // clang-format on
 };
-
-VUID_PKG const VStylePropertyMeta* v_style_get_prop_meta(
-    VStyleProperty property) {
-  return (property < VS__STYLE_PROPERTY_COUNT) ? &g_style_props[property]
-                                               : NULL;
-}
 
 static bool v_style_validate_string(const char** value) {
   if (*value == NULL) {
@@ -6528,6 +6605,7 @@ VUID_PROPERTY_FUNCTIONS_IMPL(VS_BORDER_COLOR, border_color, VColor, v_color_eq, 
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_SCROLLBAR_THUMB, scrollbar_thumb, VColor, v_color_eq, color, VUID_VALIDATE_NONE)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_SCROLLBAR_THUMB_HOVER, scrollbar_thumb_hover, VColor, v_color_eq, color, VUID_VALIDATE_NONE)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_ANCHOR_TO, anchor_to, VAnchorTo, VUID_EQ, anchor_to, VUID_VALIDATE_NONE)
+VUID_PROPERTY_FUNCTIONS_IMPL(VS_POSITION_FALLBACK, position_fallback, VPositionFallback, VUID_EQ, position_fallback, VUID_VALIDATE_NONE)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_ANCHOR_ATTACH_POINT_X, anchor_attach_point_x, VAttachPointX, VUID_EQ, attach_point_x, VUID_VALIDATE_NONE)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_ANCHOR_ATTACH_POINT_Y, anchor_attach_point_y, VAttachPointY, VUID_EQ, attach_point_y, VUID_VALIDATE_NONE)
 VUID_PROPERTY_FUNCTIONS_IMPL(VS_ATTACH_POINT_X, attach_point_x, VAttachPointX, VUID_EQ, attach_point_x, VUID_VALIDATE_NONE)
@@ -6671,7 +6749,7 @@ VUID_PKG void v_style_flatten(VStyle* a, VStyle* b) {
       continue;
     }
 
-    const VStylePropertyMeta* meta = v_style_get_prop_meta((VStyleProperty)i);
+    const VStylePropertyMeta* meta = &g_style_props[i];
 
     switch (meta->tag) {
       case VSTAG_STYLE_VALUE:
@@ -6697,6 +6775,9 @@ VUID_PKG void v_style_flatten(VStyle* a, VStyle* b) {
         break;
       case VSTAG_ENUM_ANCHOR_TO:
         meta->set_fn.anchor_to(a, meta->get_fn.anchor_to(b));
+        break;
+      case VSTAG_ENUM_POSITION_FALLBACK:
+        meta->set_fn.position_fallback(a, meta->get_fn.position_fallback(b));
         break;
       case VSTAG_ENUM_ATTACH_POINT_X:
         meta->set_fn.attach_point_x(a, meta->get_fn.attach_point_x(b));
@@ -7081,8 +7162,7 @@ static void v_layout_pass2_width_dist(VNode* node,
 
       if (child->popover_type != V_POPOVER_NONE) {
         if (wtag == V_SIZE_MODE_GROW) {
-          cw = (vs_get_anchor_to(child_style) == V_ANCHOR_TO_ROOT) ? root_width
-                                                                   : width;
+          cw = root_width;
         } else {
           cw = child->pref_width;
         }
@@ -7371,25 +7451,38 @@ static void v_layout_pass3_height(VNode* node) {
 }
 
 static void v_layout_pass4_height_dist(VNode* node,
-                                       float height);  // forward decl
+                                       float height,
+                                       float root_height);  // forward decl
 
-// Assign row_h to each flow child in [start, end) along the sibling list.
-// Pass end=NULL to flush to the end of the list (last row).
-static void v__flush_row(VNode* start, VNode* end, float row_h) {
+/*
+ * Assign heights to each flow child in [start, end) along the sibling list.
+ * - GROW children fill inner_h minus their own margins
+ * - fixed children keep their preferred height
+ * - pass end=NULL to flush to the end of the list.
+ */
+static void v__flush_row(VNode* start,
+                         VNode* end,
+                         float inner_h,
+                         float root_height) {
   for (VNode* c = start; c != NULL && c != end; c = v_node_next_sibling(c)) {
     if (!v_is_in_flow(c)) {
       continue;
     }
     const VStyle* cs = v_node_get_style_or_empty(c);
-    const float ch = (v_style_resolve_height_size_mode(cs) == V_SIZE_MODE_GROW)
-                         ? row_h
-                         : c->pref_height;
-    v_layout_pass4_height_dist(c, ch);
+    float ch;
+    if (v_style_resolve_height_size_mode(cs) == V_SIZE_MODE_GROW) {
+      ch = fmaxf(0.0f, inner_h - v_insets_height(&c->margin));
+    } else {
+      ch = c->pref_height;
+    }
+    v_layout_pass4_height_dist(c, ch, root_height);
   }
 }
 
-// Pass 4: Height Distribution (Top-down)
-static void v_layout_pass4_height_dist(VNode* node, float height) {
+/* Pass 4: Height Distribution (Top-down) */
+static void v_layout_pass4_height_dist(VNode* node,
+                                       float height,
+                                       float root_height) {
   // note: first call is with root, which is always visible.
 
   if (!v_node_is_dirty(node)) {
@@ -7436,13 +7529,11 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
 
       if (child->popover_type != V_POPOVER_NONE) {
         if (htag == V_SIZE_MODE_GROW) {
-          ch = (vs_get_anchor_to(child_style) == V_ANCHOR_TO_ROOT)
-                   ? v_root()->bounds.height
-                   : height;
+          ch = root_height;
         } else {
           ch = child->pref_height;
         }
-        v_layout_pass4_height_dist(child, ch);
+        v_layout_pass4_height_dist(child, ch, root_height);
       } else if (v_style__is_absolute(child_style)) {
         // TODO: has top && has bottom seems wrong
         if (htag == V_SIZE_MODE_GROW) {
@@ -7454,7 +7545,7 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
         } else {
           ch = child->pref_height;
         }
-        v_layout_pass4_height_dist(child, ch);
+        v_layout_pass4_height_dist(child, ch, root_height);
       } else {
         visible_children++;
         if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_NONE) {
@@ -7524,7 +7615,7 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
       } else {
         ch = child->pref_height;
       }
-      v_layout_pass4_height_dist(child, ch);
+      v_layout_pass4_height_dist(child, ch, root_height);
     }
   } else if (dir == V_DIRECTION_ROW && wrap == V_WRAP_NONE) {
     v_foreach_flow_child(node, child) {
@@ -7538,36 +7629,33 @@ static void v_layout_pass4_height_dist(VNode* node, float height) {
       } else {
         ch = child->pref_height;
       }
-      v_layout_pass4_height_dist(child, ch);
+      v_layout_pass4_height_dist(child, ch, root_height);
     }
   } else if (dir == V_DIRECTION_COLUMN && wrap == V_WRAP_WRAP) {
     v_foreach_flow_child(node, child) {
-      v_layout_pass4_height_dist(child, child->pref_height);
+      v_layout_pass4_height_dist(child, child->pref_height, root_height);
     }
   } else {
-    // ROW_WRAP: assign each child the height of the tallest child in its row.
+    // ROW_WRAP: distribute heights row by row.
     const float inner_w = node->bounds.width - v_node_inset_width(node);
     VNode* row_start = NULL;
     float current_row_w = 0;
-    float current_row_h = 0;
 
     v_foreach_flow_child(node, child) {
       const float child_total_w =
           child->bounds.width + child->margin.left + child->margin.right;
       if (current_row_w > 0 && current_row_w + child_total_w > inner_w) {
-        v__flush_row(row_start, child, current_row_h);
+        v__flush_row(row_start, child, inner_h, root_height);
         row_start = NULL;
         current_row_w = 0;
-        current_row_h = 0;
       }
       if (!row_start) {
         row_start = child;
       }
       current_row_w += child_total_w + gap;
-      current_row_h = fmaxf(current_row_h, child->pref_height);
     }
 
-    v__flush_row(row_start, NULL, current_row_h);
+    v__flush_row(row_start, NULL, inner_h, root_height);
   }
 }
 
@@ -7908,124 +7996,61 @@ static void v_layout_pass5_pos(VNode* node, float x, float y) {
   }
 }
 
-static void v_node_get_abs_pos_point(VRect rect,
-                                     VAttachPointX attach_point_x,
-                                     VAttachPointY attach_point_y,
-                                     float* out_x,
-                                     float* out_y) {
-  switch (attach_point_x) {
-    case V_ATTACH_POINT_X_LEFT:
-    default:
-      *out_x = rect.x;
-      break;
-    case V_ATTACH_POINT_X_CENTER:
-      *out_x = rect.x + rect.width / 2.0f;
-      break;
-    case V_ATTACH_POINT_X_RIGHT:
-      *out_x = rect.x + rect.width;
-      break;
-  }
-  switch (attach_point_y) {
-    case V_ATTACH_POINT_Y_TOP:
-    default:
-      *out_y = rect.y;
-      break;
-    case V_ATTACH_POINT_Y_CENTER:
-      *out_y = rect.y + rect.height / 2.0f;
-      break;
-    case V_ATTACH_POINT_Y_BOTTOM:
-      *out_y = rect.y + rect.height;
-      break;
-  }
-}
+/*
+ * Position popovers relative to their anchors.
+ *
+ * - the popover stack contains only popovers, but some may not be visible
+ * - in previous passes, popovers are sized with the viewport as parent
+ * - the anchor of a popover is its parent
+ */
+static void v_layout_pass6_popovers(VArray* popovers, VRect viewport) {
+  const size_t size = popovers->size;
+  for (size_t i = 0; i < size; ++i) {
+    VNode* popover = v_array_get_ptr_unchecked(popovers, i);
+    const VNode* anchor = v_weak_ref_get(popover->parent);
 
-static void v_layout_pass6_popovers(VNode* node,
-                                    float abs_x,
-                                    float abs_y,
-                                    float root_w,
-                                    float root_h) {
-  const float current_abs_x = abs_x + node->bounds.x;
-  const float current_abs_y = abs_y + node->bounds.y;
-
-  v_foreach_child(node, child) {
-    if (!v_node_is_visible(child)) {
+    if (!v_node_is_visible(popover) || !anchor) {
       continue;
     }
 
-    if (child->popover_type != V_POPOVER_NONE) {
-      const VStyle* child_style = v_node_get_style_or_empty(child);
-      const VAnchorTo attach = vs_get_anchor_to(child_style);
-      VRect anchor_rect;
+    v_popover_set_position(popover, anchor, false, false);
 
-      if (attach == V_ANCHOR_TO_ROOT) {
-        anchor_rect = (VRect){
-            0,
-            0,
-            root_w,
-            root_h,
-        };
-      } else {
-        anchor_rect = (VRect){
-            current_abs_x,
-            current_abs_y,
-            node->bounds.width,
-            node->bounds.height,
-        };
-      }
-
-      float ax, ay;
-      v_node_get_abs_pos_point(
-          anchor_rect, vs_get_anchor_attach_point_x(child_style),
-          vs_get_anchor_attach_point_y(child_style), &ax, &ay);
-
-      const VRect popover_rect = {
-          0,
-          0,
-          child->bounds.width,
-          child->bounds.height,
-      };
-      float px, py;
-      v_node_get_abs_pos_point(popover_rect, vs_get_attach_point_x(child_style),
-                               vs_get_attach_point_y(child_style), &px, &py);
-
-      // popover bounds.x/y are in absolute screen space coordinates
-      // because they are drawn relative to root (0,0) in Pass B/C
-      child->bounds.x = v_snap_to_grid_dpr(
-          ax - px + v_style_resolve_attach_point_offset_x(child_style));
-      child->bounds.y = v_snap_to_grid_dpr(
-          ay - py + v_style_resolve_attach_point_offset_y(child_style));
+    // what if the popover is inside a scroll container and out of scroll view?
+    if (vs_get_position_fallback(popover->style) == V_POSITION_FALLBACK_FLIP) {
+      v_popover_position_fallback_try(popover, anchor, viewport);
     }
-
-    v_layout_pass6_popovers(child, current_abs_x,
-                            current_abs_y - node->scroll_y, root_w, root_h);
   }
 }
 
-void v_node_layout(VNode* self, VNodeModule* mod, int width, int height) {
+VUID_PKG void v_node_layout(VNodeModule* mod, int width, int height) {
   width = v_clamp_int(width, 0, VUID_FLOAT_MAX_INT);
   height = v_clamp_int(height, 0, VUID_FLOAT_MAX_INT);
 
   const float width_f = (float)width;
   const float height_f = (float)height;
 
-  VStyle* style = v_node_style(self);
+  VNode* root = mod->root;
+  VStyle* style = v_node_style(root);
 
   if (width != mod->root_width || height != mod->root_height) {
-    vs_set_width(style, v_px(width_f));
     mod->root_width = width;
-    vs_set_height(style, v_px(height_f));
     mod->root_height = height;
-    v_node_mark_dirty(self);
-  } else if (!v_node_has_flag(self, V_NODEFLAG_DIRTY)) {
+
+    vs_set_width(style, v_px(width_f));
+    vs_set_height(style, v_px(height_f));
+
+    v_node_mark_dirty(root);
+  } else if (!v_node_has_flag(root, V_NODEFLAG_DIRTY)) {
     return;
   }
 
-  v_layout_pass1_width(self);
-  v_layout_pass2_width_dist(self, width_f, width_f);
-  v_layout_pass3_height(self);
-  v_layout_pass4_height_dist(self, height_f);
-  v_layout_pass5_pos(self, 0, 0);
-  v_layout_pass6_popovers(self, 0, 0, width_f, height_f);
+  v_layout_pass1_width(root);
+  v_layout_pass2_width_dist(root, width_f, width_f);
+  v_layout_pass3_height(root);
+  v_layout_pass4_height_dist(root, height_f, height_f);
+  v_layout_pass5_pos(root, 0, 0);
+  v_layout_pass6_popovers(&mod->popover_stack,
+                          (VRect){0, 0, width_f, height_f});
 
   v_ctx_request_render();
 }
@@ -8197,6 +8222,151 @@ VUID_HMAP_IMPL(VNodeIdSet, VNodeIdSetKey, VNodeIdSetValue, v_node_id_set)
 
 
 
+static VPoint v_resolve_attach_point(VRect bounds,
+                                     VAttachPointX attach_point_x,
+                                     VAttachPointY attach_point_y);
+static bool v_popover_set_position_try(VNode* popover,
+                                       const VNode* anchor,
+                                       bool flip_x,
+                                       bool flip_y,
+                                       VRect viewport);
+
+static inline VAttachPointX v_flip_attach_point_x(VAttachPointX p) {
+  return (p == V_ATTACH_POINT_X_LEFT)    ? V_ATTACH_POINT_X_RIGHT
+         : (p == V_ATTACH_POINT_X_RIGHT) ? V_ATTACH_POINT_X_LEFT
+                                         : V_ATTACH_POINT_X_CENTER;
+}
+
+static inline VAttachPointY v_flip_attach_point_y(VAttachPointY p) {
+  return (p == V_ATTACH_POINT_Y_TOP)      ? V_ATTACH_POINT_Y_BOTTOM
+         : (p == V_ATTACH_POINT_Y_BOTTOM) ? V_ATTACH_POINT_Y_TOP
+                                          : V_ATTACH_POINT_Y_CENTER;
+}
+
+// clang-format off
+VUID_PKG void v_popover_set_position(VNode* popover, const VNode* anchor, bool flip_x, bool flip_y) {
+  const VStyle* popover_style = v_node_get_style_or_empty(popover);
+  VAttachPointX attach_point_x = vs_get_attach_point_x(popover_style);
+  VAttachPointY attach_point_y = vs_get_attach_point_y(popover_style);
+  VAttachPointX anchor_attach_point_x = vs_get_anchor_attach_point_x(popover_style);
+  VAttachPointY anchor_attach_point_y = vs_get_anchor_attach_point_y(popover_style);
+
+  if (flip_x) {
+    attach_point_x = v_flip_attach_point_x(attach_point_x);
+    anchor_attach_point_x = v_flip_attach_point_x(anchor_attach_point_x);
+  }
+
+  if (flip_y) {
+    attach_point_y = v_flip_attach_point_y(attach_point_y);
+    anchor_attach_point_y = v_flip_attach_point_y(anchor_attach_point_y);
+  }
+
+  const VPoint anchor_attach_point = v_resolve_attach_point(
+    v_node_get_bounds_at(anchor, V_NODE_POSITION_ABSOLUTE),
+    anchor_attach_point_x,
+    anchor_attach_point_y
+  );
+
+  const VPoint popover_attach_point = v_resolve_attach_point(
+    v_node_get_bounds_at(popover, V_NODE_POSITION_ZERO),
+    attach_point_x,
+    attach_point_y
+  );
+
+  float offset_x = v_style_resolve_attach_point_offset_x(popover_style);
+
+  if (flip_x) {
+    offset_x = -offset_x;
+  }
+
+
+  popover->bounds.x = v_snap_to_grid_dpr(
+    anchor_attach_point.x - popover_attach_point.x + offset_x
+  );
+
+  float offset_y = v_style_resolve_attach_point_offset_y(popover_style);
+
+  if (flip_y) {
+    offset_y = -offset_y;
+  }
+
+  popover->bounds.y = v_snap_to_grid_dpr(
+    anchor_attach_point.y - popover_attach_point.y + offset_y
+  );
+}
+// clang-format on
+
+VUID_PKG void v_popover_position_fallback_try(VNode* popover,
+                                              const VNode* anchor,
+                                              VRect viewport) {
+  const VRect popover_bounds = popover->bounds;
+  const bool overflow_y = !v_rect_contains_yaxis(viewport, popover_bounds);
+
+  if (overflow_y &&
+      v_popover_set_position_try(popover, anchor, false, true, viewport)) {
+    return;
+  }
+
+  const bool overflow_x = !v_rect_contains_xaxis(viewport, popover_bounds);
+
+  if (overflow_x) {
+    v_popover_set_position_try(popover, anchor, true, false, viewport);
+  }
+}
+
+static VPoint v_resolve_attach_point(VRect bounds,
+                                     VAttachPointX attach_point_x,
+                                     VAttachPointY attach_point_y) {
+  VPoint result;
+
+  switch (attach_point_x) {
+    case V_ATTACH_POINT_X_LEFT:
+    default:
+      result.x = bounds.x;
+      break;
+    case V_ATTACH_POINT_X_CENTER:
+      result.x = bounds.x + bounds.width / 2.0f;
+      break;
+    case V_ATTACH_POINT_X_RIGHT:
+      result.x = bounds.x + bounds.width;
+      break;
+  }
+
+  switch (attach_point_y) {
+    case V_ATTACH_POINT_Y_TOP:
+    default:
+      result.y = bounds.y;
+      break;
+    case V_ATTACH_POINT_Y_CENTER:
+      result.y = bounds.y + bounds.height / 2.0f;
+      break;
+    case V_ATTACH_POINT_Y_BOTTOM:
+      result.y = bounds.y + bounds.height;
+      break;
+  }
+
+  return result;
+}
+
+static bool v_popover_set_position_try(VNode* popover,
+                                       const VNode* anchor,
+                                       bool flip_x,
+                                       bool flip_y,
+                                       VRect viewport) {
+  const VRect popover_bounds = popover->bounds;
+
+  v_popover_set_position(popover, anchor, flip_x, flip_y);
+
+  if (!v_rect_contains(viewport, popover->bounds)) {
+    popover->bounds = popover_bounds;
+    return false;
+  }
+
+  return true;
+}
+
+
+
 
 static VNode* v_node_hit_test_recursive(VNode* node,
                                         float abs_x,
@@ -8246,10 +8416,9 @@ VUID_PKG void v_node_on_mouse_button(VNode* self,
       const VStyle* curr_style = v_node_get_style_or_empty(curr);
 
       if (vs_get_overflow(curr_style) == V_OVERFLOW_SCROLL) {
-        float abs_x, abs_y;
-        v_node_get_abs_pos(curr, &abs_x, &abs_y);
+        const VPoint abs = v_node_get_abs_pos(curr);
         VRect track, thumb;
-        v_node_get_scrollbar_rect(curr, abs_x, abs_y, &track, &thumb);
+        v_node_get_scrollbar_rect(curr, abs.x, abs.y, &track, &thumb);
 
         if (v_point_in_rect(x, y, track.x, track.y, track.width,
                             track.height) &&
@@ -9693,17 +9862,32 @@ VUID_PKG bool v_node_is_descendant_of(const VNode* node,
   return v_node_is_descendant_of(v_node_parent(node), ancestor);
 }
 
-VUID_PKG void v_node_get_abs_pos(const VNode* node, float* x, float* y) {
-  *x = 0;
-  *y = 0;
+VUID_PKG VPoint v_node_get_abs_pos(const VNode* node) {
+  VPoint result = {0, 0};
+
   for (const VNode* curr = node; curr; curr = v_node_parent(curr)) {
-    VNode* p = v_node_parent(curr);
-    *x += curr->bounds.x;
+    const VNode* p = v_node_parent(curr);
+    result.x += curr->bounds.x;
     if (p) {
-      *y += (curr->bounds.y - p->scroll_y);
+      result.y += (curr->bounds.y - p->scroll_y);
     } else {
-      *y += curr->bounds.y;
+      result.y += curr->bounds.y;
     }
+  }
+
+  return result;
+}
+
+VUID_PKG VRect v_node_get_bounds_at(const VNode* node, VNodePosition xy) {
+  switch (xy) {
+    case V_NODE_POSITION_ZERO:
+      return v_rect_move_to(&node->bounds, v_point_init());
+    case V_NODE_POSITION_ABSOLUTE: {
+      return v_rect_move_to(&node->bounds, v_node_get_abs_pos(node));
+    }
+    case V_NODE_POSITION_RELATIVE:
+    default:
+      return node->bounds;
   }
 }
 
